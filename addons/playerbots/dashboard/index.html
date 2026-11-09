@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>EveJS Operations</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail">
+      <a class="brand" href="#overview" aria-label="EveJS operations home">
+        <span class="brand-mark">E</span><span><strong>EVEJS</strong><small>OPERATIONS</small></span>
+      </a>
+      <div class="rail-label">CONTROL ROOM</div>
+      <nav id="navigation" aria-label="Dashboard sections">
+        <a class="nav-link active" href="#overview" data-view="overview"><span class="nav-icon">◈</span>Overview</a>
+        <a class="nav-link" href="#pilots" data-view="pilots"><span class="nav-icon">✣</span>Pilots</a>
+        <a class="nav-link" href="#corporations" data-view="corporations"><span class="nav-icon">▤</span>Corporations</a>
+        <a class="nav-link" href="#systems" data-view="systems"><span class="nav-icon">◎</span>Systems</a>
+        <a class="nav-link" href="#operations" data-view="operations"><span class="nav-icon">⌁</span>Operations</a>
+        <a class="nav-link" href="#killboard" data-view="killboard"><span class="nav-icon">✕</span>Killboard</a>
+        <a class="nav-link" href="#territory" data-view="territory"><span class="nav-icon">⬡</span>Territory</a>
+        <a class="nav-link" href="#settings" data-view="settings"><span class="nav-icon">⚙</span>Settings</a>
+      </nav>
+      <div class="rail-bottom">
+        <span class="live-dot"></span><span id="connection-state">Connecting to EveJS</span>
+        <small>PLAYERBOT CONSOLE</small>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="breadcrumbs"><span>NEW EDEN</span><b>/</b><strong id="page-name">Overview</strong></div>
+        <div class="top-actions"><span id="updated-at">Waiting for first snapshot</span><button id="refresh" type="button" title="Refresh dashboard">↻ <span>Refresh</span></button></div>
+      </header>
+
+      <section class="page active" id="view-overview">
+        <div class="page-heading">
+          <div><div class="eyebrow">SERVER INTELLIGENCE</div><h1>Universe overview</h1><p>Playerbot activity and production at a glance.</p></div>
+          <div class="status-chip"><span class="live-dot"></span><span id="server-status">Waiting for server</span></div>
+        </div>
+        <div id="alert" class="alert hidden" role="status"></div>
+        <div class="metric-grid" id="metrics"></div>
+        <div class="two-column">
+          <article class="panel">
+            <div class="panel-heading"><div><div class="eyebrow">BOT ORGANIZATION</div><h2>Specialties</h2></div><a href="#corporations">All corporations <span>↗</span></a></div>
+            <div id="specialties" class="specialty-list"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading"><div><div class="eyebrow">WORKLOAD</div><h2>Live operations</h2></div><a href="#operations">View operations <span>↗</span></a></div>
+            <div id="operation-summary" class="operation-summary"></div>
+          </article>
+        </div>
+        <article class="panel">
+          <div class="panel-heading"><div><div class="eyebrow">PILOT DISTRIBUTION</div><h2>Most populated systems</h2></div><a href="#systems">All systems <span>↗</span></a></div>
+          <div class="table-wrap"><table><thead><tr><th>SOLAR SYSTEM</th><th>SYSTEM ID</th><th class="numeric">BOT PILOTS</th><th>LOAD GUIDE</th></tr></thead><tbody id="top-systems"></tbody></table></div>
+        </article>
+      </section>
+
+      <section class="page" id="view-pilots">
+        <div class="page-heading"><div><div class="eyebrow">ROSTER INTELLIGENCE</div><h1>Playerbot pilots</h1><p>Search the roster and inspect ship, location, corporation, and assigned work.</p></div></div>
+        <div class="panel filters">
+          <label>Search pilot<input id="pilot-search" type="search" placeholder="Name or character ID"></label>
+          <label>Specialty<select id="pilot-specialty"><option value="">All specialties</option></select></label>
+          <label>Corporation ID<input id="pilot-corporation" type="number" min="1" placeholder="Any corporation"></label>
+          <button id="apply-filters" type="button">Apply filters</button>
+        </div>
+        <article class="panel">
+          <div class="panel-heading"><div><div class="eyebrow">PILOT ROSTER</div><h2 id="pilot-count">Loading pilots</h2></div><div class="pagination"><button id="pilot-prev" type="button">← Previous</button><span id="pilot-page">Page 1</span><button id="pilot-next" type="button">Next →</button></div></div>
+          <div class="table-wrap"><table><thead><tr><th>PILOT</th><th>SPECIALTY</th><th>CORPORATION</th><th>LOCATION</th><th>SHIP</th><th>WORK</th><th>STATE</th></tr></thead><tbody id="pilot-rows"></tbody></table></div>
+        </article>
+      </section>
+
+      <section class="page" id="view-corporations">
+        <div class="page-heading"><div><div class="eyebrow">ORGANIZATION MAP</div><h1>Corporations</h1><p>Member counts, pilot specialization, and the current EVEJS corporation limit.</p></div></div>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">BOT CORPORATIONS</div><h2 id="corporation-count">Loading corporations</h2></div></div><div class="table-wrap"><table><thead><tr><th>CORPORATION</th><th>CORPORATION ID</th><th>ALLIANCE ID</th><th>SPECIALTIES</th><th class="numeric">BOT PILOTS</th><th class="numeric">MEMBERS / LIMIT</th><th>CAPACITY</th></tr></thead><tbody id="corporation-rows"></tbody></table></div></article>
+      </section>
+
+      <section class="page" id="view-systems">
+        <div class="page-heading"><div><div class="eyebrow">NEW EDEN MAP</div><h1>Solar systems</h1><p>Current bot locations aggregated from the persisted character records.</p></div></div>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">SYSTEM POPULATION</div><h2 id="system-count">Loading systems</h2></div></div><div class="table-wrap"><table><thead><tr><th>SOLAR SYSTEM</th><th>SYSTEM ID</th><th class="numeric">BOT PILOTS</th><th>SHARE OF ROSTER</th></tr></thead><tbody id="system-rows"></tbody></table></div></article>
+      </section>
+
+      <section class="page" id="view-operations">
+        <div class="page-heading"><div><div class="eyebrow">AUTONOMOUS WORK</div><h1>Operations and production</h1><p>See every pilot, including docked and offline bots, their current location, durable operation, queued tasks, and archived work.</p></div></div>
+        <div class="metric-grid compact work-metric-grid" id="work-metrics"></div>
+        <div id="work-failures" class="alert hidden" role="status"></div>
+        <article class="panel">
+          <div class="panel-heading"><div><div class="eyebrow">FULL ROSTER ACTIVITY</div><h2 id="activity-count">Loading every pilot</h2><p id="activity-summary" class="panel-subtitle">This roster view includes pilots in space, docked in stations or structures, and offline.</p></div><div class="pagination"><button id="activity-prev" type="button">← Previous</button><span id="activity-page">Page 1</span><button id="activity-next" type="button">Next →</button></div></div>
+          <div class="filters activity-filters"><label>Search pilot<input id="activity-search" type="search" placeholder="Name or character ID"></label><label>Rows<select id="activity-page-size"><option value="50">50</option><option value="100" selected>100</option></select></label><button id="apply-activity-filters" type="button">Apply</button></div>
+          <div class="table-wrap"><table class="activity-table"><thead><tr><th>PILOT / ID</th><th>CORPORATION</th><th>PRESENCE / LOCATION</th><th>SPECIALTY</th><th>CURRENT OPERATION</th><th>QUEUED / LEASED TASKS</th></tr></thead><tbody id="activity-rows"></tbody></table></div>
+        </article>
+        <div class="panel filters operation-filters">
+          <label>Search operation<input id="operation-search" type="search" placeholder="Pilot, operation ID, system, or action"></label>
+          <label>Status<select id="operation-status"><option value="">All statuses</option></select></label>
+          <label>Type<select id="operation-kind"><option value="">All operation types</option></select></label>
+          <button id="apply-operation-filters" type="button">Apply filters</button>
+        </div>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">LIVE AND ARCHIVED WORK</div><h2 id="operation-count">Loading operations</h2></div><div class="pagination operation-pagination"><button id="operation-first" type="button" title="First page">|←</button><button id="operation-prev" type="button">← Previous</button><label>Page <input id="operation-page-input" type="number" min="1" value="1" aria-label="Operation history page"> of <span id="operation-page-count">1</span></label><button id="operation-next" type="button">Next →</button><button id="operation-last" type="button" title="Last page">→|</button><label>Rows <select id="operation-page-size" aria-label="Rows per page"><option value="50">50</option><option value="100" selected>100</option></select></label></div></div><div class="table-wrap"><table class="operations-table"><thead><tr><th>PILOT</th><th>CORPORATION</th><th>TYPE / ID</th><th>STATUS</th><th>STAGE</th><th>SYSTEM / PLANET</th><th>SHIP</th><th>UPDATED</th><th>LAST ACTION</th><th>SPENT / EARNED</th><th></th></tr></thead><tbody id="operation-rows"></tbody></table></div></article>
+      </section>
+
+      <section class="page" id="view-settings">
+        <div class="page-heading"><div><div class="eyebrow">PLAYERBOT CONTROL</div><h1>Runtime settings</h1><p>Configure population targets, connection rotation, system density, work concurrency, and add-on scheduling.</p></div></div>
+        <div id="settings-alert" class="alert hidden" role="status"></div>
+        <div class="metric-grid compact" id="settings-metrics"></div>
+        <form id="settings-form">
+          <article class="panel settings-section"><div class="panel-heading"><div><div class="eyebrow">POPULATION AND PRESENCE</div><h2>Roster and online pilots</h2></div></div><div class="settings-grid">
+            <label>Roster target<input name="rosterTarget" type="number" min="30" max="15000" required><small>Target roster size. Gradual seeding uses this target when enabled below.</small></label>
+            <label>Roster ceiling<input name="rosterCeiling" type="number" min="30" max="15000" required><small>Maximum roster size permitted by this configuration.</small></label>
+            <label>Maximum online bots<input name="maxOnline" type="number" min="1" max="5000" required></label>
+            <label>Connection rotation (hours)<input name="connectionWindowHours" type="number" min="0.083333333" max="168" step="any" required><small>Time window used to rotate virtual player presence.</small></label>
+            <label>Maximum bots per system<input name="maxPerSystem" type="number" min="1" max="300" required></label>
+          </div></article>
+          <article class="panel settings-section"><div class="panel-heading"><div><div class="eyebrow">WORK CAPACITY</div><h2>Concurrent autonomous work</h2></div></div><div class="settings-grid">
+            <label>General work slots<input name="maxConcurrentWork" type="number" min="1" max="5000" required></label>
+            <label>Concurrent relocations<input name="maxConcurrentRelocations" type="number" min="1" max="1000" required></label>
+            <label>Concurrent PI colony setups<input name="maxConcurrentColonySetups" type="number" min="1" max="500" required></label>
+            <label>Director think minimum (seconds)<input name="directorThinkMinSeconds" type="number" min="15" max="3600" required></label>
+            <label>Director think maximum (seconds)<input name="directorThinkMaxSeconds" type="number" min="15" max="3600" required></label>
+            <label>Initial director spread (seconds)<input name="directorInitialSpreadSeconds" type="number" min="1" max="3600" required></label>
+          </div></article>
+          <article class="panel settings-section"><div class="panel-heading"><div><div class="eyebrow">ADD-ON DRIVER</div><h2>Cycle schedule and throughput</h2></div></div><div class="settings-grid">
+            <label>Bot steps in parallel<input name="addonConcurrency" type="number" min="1" max="100" required><small>EveJS lowers active steps automatically when CPU or event-loop delay rises.</small></label>
+            <label>Cycle interval (seconds)<input name="addonCycleIntervalSeconds" type="number" min="30" max="86400" required></label>
+            <label>Delay per bot (milliseconds)<input name="addonBotDelayMs" type="number" min="0" max="5000" required></label>
+            <label>EveJS request timeout (seconds)<input name="addonRequestTimeoutSeconds" type="number" min="10" max="600" required><small>Applies to bot steps; dashboard API reads use this value capped at 30 seconds.</small></label>
+            <label class="checkbox-setting"><input name="autoworkEnabled" type="checkbox">Enable autonomous playerbot work</label>
+          </div></article>
+          <article class="panel settings-section"><div class="panel-heading"><div><div class="eyebrow">SAFE ROSTER GROWTH</div><h2>Gradual pilot seeding</h2></div></div><div class="settings-grid">
+            <label class="checkbox-setting"><input name="rosterSeedEnabled" type="checkbox">Enable gradual roster seeding</label>
+            <label>Bots per batch<input name="rosterSeedBatchSize" type="number" min="1" max="10" required><small>Hard cap: 10. Each batch yields to EveJS between pilots and stops when server load is high.</small></label>
+            <label>Time between batches (seconds)<input name="rosterSeedIntervalSeconds" type="number" min="5" max="300" required><small>Allowed range: 5–300 seconds. High server delay adds a short backoff.</small></label>
+            <label>Maximum event-loop p95 (ms)<input name="rosterSeedMaxEventLoopP95Ms" type="number" min="25" max="250" required><small>Hard cap: 250 ms. Seeding pauses above the lower of this value and the cap.</small></label>
+            <label>Maximum EveJS process CPU (%)<input name="rosterSeedMaxProcessCpuPercent" type="number" min="25" max="95" required><small>Hard cap: 95%. Seeding pauses above the lower of this value and the cap.</small></label>
+            <label>Maximum single bot creation time (ms)<input name="rosterSeedMaximumSingleBotMs" type="number" min="25" max="1000" required><small>Hard cap: 1,000 ms. A slow character creation stops the current batch.</small></label>
+          </div><div class="seed-monitor" aria-live="polite"><strong id="seed-state">Loading seeding status</strong><span id="seed-progress">—</span><small id="seed-last-batch">The seeder waits for two server-load samples before creating pilots.</small></div></article>
+          <div class="settings-actions"><span id="settings-updated">Loading saved settings</span><button type="submit" id="save-settings">Save settings</button></div>
+        </form>
+      </section>
+
+      <section class="page" id="view-killboard">
+        <div class="page-heading"><div><div class="eyebrow">COMBAT INTELLIGENCE</div><h1>Killboard</h1><p>NPC pirates can fly hull types also used by capsuleers. Pilot side is classified from character, corporation, faction, and roster identity; the ship image alone does not identify its owner.</p></div><button id="killboard-refresh" type="button">↻ Refresh kills</button></div>
+        <div class="metric-grid compact" id="kill-metrics"></div>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">LATEST COMBAT</div><h2 id="kill-recent-count">Recent killmails</h2></div></div><div class="table-wrap"><table><thead><tr><th>TIME</th><th>VICTIM / CORPORATION</th><th>SIDE</th><th>SHIP HULL</th><th>SYSTEM</th><th>FINAL BLOW / CORPORATION</th><th class="numeric">ISK LOST</th></tr></thead><tbody id="kill-recent-rows"></tbody></table></div></article>
+        <div class="two-column">
+          <article class="panel"><div class="panel-heading"><div><div class="eyebrow">BOT COMBAT RECORD</div><h2>Playerbot pilots</h2></div></div><div class="table-wrap"><table><thead><tr><th>PILOT</th><th class="numeric">KILLS</th><th class="numeric">LOSSES</th></tr></thead><tbody id="kill-pilot-rows"></tbody></table></div></article>
+          <article class="panel"><div class="panel-heading"><div><div class="eyebrow">CORPORATION RECORD</div><h2>Corporations</h2></div></div><div class="table-wrap"><table><thead><tr><th>CORPORATION</th><th class="numeric">KILLS</th><th class="numeric">NPC KILLS</th><th class="numeric">PLAYER LOSSES</th></tr></thead><tbody id="kill-corporation-rows"></tbody></table></div></article>
+        </div>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">HULL LOSSES</div><h2>Most destroyed ships</h2></div></div><div class="table-wrap"><table><thead><tr><th>SHIP</th><th class="numeric">LOST</th></tr></thead><tbody id="kill-ship-rows"></tbody></table></div></article>
+      </section>
+
+      <section class="page" id="view-territory">
+        <div class="page-heading"><div><div class="eyebrow">FLEETS AND FRONTIERS</div><h1>Territory and infrastructure</h1><p>Fleet composition, active wars, structures, cores, power state, and sovereignty claims.</p></div></div>
+        <div class="metric-grid compact" id="territory-metrics"></div>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">LIVE FLEETS</div><h2 id="fleet-count">Loading fleets</h2></div></div><div class="table-wrap"><table><thead><tr><th>FLEET</th><th>FLEET ID</th><th class="numeric">MEMBERS</th><th class="numeric">BOTS</th><th class="numeric">HUMANS</th><th>SYSTEM ID</th></tr></thead><tbody id="fleet-rows"></tbody></table></div></article>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">CORPORATION AND ALLIANCE WARS</div><h2 id="war-count">Loading wars</h2></div></div><div class="table-wrap"><table><thead><tr><th>WAR ID</th><th>ATTACKER</th><th>DEFENDER</th><th>STATUS</th><th>TYPE</th><th>WAR HQ</th></tr></thead><tbody id="war-rows"></tbody></table></div></article>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">UPWELL STRUCTURES</div><h2 id="structure-count">Loading structures</h2></div></div><div class="table-wrap"><table><thead><tr><th>STRUCTURE</th><th>STRUCTURE ID</th><th>SOLAR SYSTEM</th><th>OWNER CORP</th><th>UPKEEP</th><th>CORE</th><th>STATE</th></tr></thead><tbody id="structure-rows"></tbody></table></div></article>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">SOVEREIGNTY</div><h2 id="sovereignty-count">Loading claims</h2></div></div><div class="table-wrap"><table><thead><tr><th>SOLAR SYSTEM</th><th>SYSTEM ID</th><th>ALLIANCE</th><th>ALLIANCE ID</th></tr></thead><tbody id="sovereignty-rows"></tbody></table></div></article>
+      </section>
+
+      <footer class="footer"><span>EveJS Playerbots Add-on</span><span>Dashboard settings are editable · Game state remains managed by EveJS</span></footer>
+    </main>
+  </div>
+  <dialog id="operation-dialog" class="operation-dialog"><div class="dialog-heading"><div><div class="eyebrow">OPERATION RECORD</div><h2 id="operation-dialog-title">Details</h2></div><button id="operation-dialog-close" type="button" aria-label="Close">×</button></div><div id="operation-dialog-content"></div></dialog>
+</body>
+</html>
