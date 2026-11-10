@@ -2001,3 +2001,71 @@ matching wallet, market, and inventory evidence.
 
 Add-on `0.2.137` changes the fresh-install roster target to 500. Existing
 installations retain their saved target and environment settings.
+
+## Subsystem telemetry, bounded director passes and patrol rotation — 10 Nov 2026
+
+Add-on `0.2.138` adapts four patterns from the Living Universe patch while
+keeping playerbots as persistent EveJS characters with sessions, wallets,
+corporations and operations that go through the EveJS game authorities.
+
+- **Performance telemetry.** `GET /v1/dashboard/telemetry` and the dashboard's
+  Performance page report event-loop delay, process and main-thread CPU,
+  memory, garbage collection, durable-scheduler backlog and start delay, work
+  time per subsystem, and how many bot ships are in systems with no human pilot
+  in space. Sampling is continuous and cheap; the scheduler queue is scanned
+  only when the page or endpoint is read, and that scan is reused for 60
+  seconds. Earlier latency findings in this roadmap came from one-off V8
+  profiles; these measurements are available at any time.
+- **Director slice budget.** A director pass hands control back to EveJS
+  between pilots once its uninterrupted slice exceeds `directorSliceBudgetMs`
+  (default 8 ms; 0 disables yielding and only measures). On a saturated
+  event loop each yield returns late, so a pass stops yielding after two
+  seconds of accumulated waiting and completes in one slice. A pilot that became
+  busy while the pass waited is skipped for that pass, and an operator who
+  switches autonomous work off during a pass keeps that setting when the pass
+  ends. Candidate ordering reads each pilot's record once instead of once per
+  comparison and produces the same order. Assignment rules, the 20-attempt
+  limit and capacity limits are unchanged.
+- **Patrol rotation.** Piracy pilots no longer all deploy to the nearest pirate
+  system. Up to eight systems within six jumps of the nearest are ranked by
+  distance, patrols already assigned and deployments in the last six hours.
+  Each corporation rotates on its own 45–180 minute period, a system takes at
+  most six patrols, and a corporation that used one system in three
+  consecutive periods moves on while another is available. Routes are
+  previewed only for the chosen system, at most three per decision. A pilot
+  with no system below the cap receives the director's normal fallback work.
+  Target legality remains with Crimewatch, war status and the combat safety
+  checks. `EVEJS_PLAYER_BOTS_PATROL_ROTATION=0` restores nearest-system
+  selection.
+- **Installation verifier.** `verify.py` reports, per subsystem, whether every
+  guarded file and add-on file matches the release. It only reads files. The
+  integration manifest (schema 3) records a subsystem for each guarded file
+  and hashes for the add-on process files.
+
+Not adopted from Living Universe: session-less virtual pilots, fixed
+pirate/police hostility, scripted campaigns, encounter timers, doctrine
+catalogs that would replace the fitting planner, and NPC-stocked regional
+markets. Jita remains a seed source for permitted purchases only.
+
+| Gate | Implemented | Focused tests | In ZIP for EveJS 261108.1 | Live behaviour proven |
+| --- | --- | --- | --- | --- |
+| Subsystem telemetry | yes | yes | yes | recorded in the 10 Nov handoff |
+| Director slice budget | yes | yes | yes | recorded in the 10 Nov handoff |
+| Patrol rotation | yes | yes | yes | no live patrol evidence yet |
+| Installation verifier | yes | install/rollback matrix | yes | not applicable |
+
+The complete isolated suite passed on the supported remote host before this
+archive was built: 115 test files, 416 tests, no failures, on the deployment's
+Node.js 24 runtime in an offline container. New files cover the work budget,
+telemetry, the budgeted director pass, patrol rotation and its combat-runtime
+integration; the add-on API, configuration and dashboard tests were extended.
+One stale expectation was corrected: the default work ceiling follows the
+500-pilot default target introduced in `0.2.137`.
+
+Install, rollback, disposable-copy integration and production results for this
+archive are recorded in the 10 Nov 2026 handoff, because they are measured
+with the archive after it is built. Open after this release: reducing
+simulation detail in systems with no human present (this release only measures
+that load), an audit of delivery receipts and loss replacement against the
+Living Universe reservation pattern, the 15,000-pilot and 5,000-online
+targets, and every live gate listed earlier in this roadmap.

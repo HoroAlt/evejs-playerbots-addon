@@ -17,7 +17,7 @@ pause while a qualified escort responds.
 
 ## Source and release artifact
 
-The current public test package is `0.2.137`. The versioned ZIP in `dist/` is
+The current public test package is `0.2.138`. The versioned ZIP in `dist/` is
 the standard artifact to install and redistribute; commit it with matching
 source and documentation. The source checkout alone is not the installation
 artifact.
@@ -30,7 +30,7 @@ remaining live acceptance gates.
 
 ## Install
 
-The distributable archive is `dist/evejs-playerbots-addon-v0.2.137.zip`. Extract it and run:
+The distributable archive is `dist/evejs-playerbots-addon-v0.2.138.zip`. Extract it and run:
 
 ```sh
 EVEJS_SOURCE="/path/to/your EveJS checkout"
@@ -73,4 +73,6 @@ docker compose logs -f playerbots-addon
 
 `EVEJS_PLAYER_BOTS_ADDON_INTERVAL_MS` controls the delay after a full roster pass (default 300000 ms). `EVEJS_PLAYER_BOTS_ADDON_CONCURRENCY` controls simultaneous pilot requests (default 16, maximum 100). `EVEJS_PLAYER_BOTS_ADDON_BOT_DELAY_MS` controls the optional yield between bot requests (default 0 ms). The add-on resumes an interrupted in-memory cycle while the API remains available; durable game tasks remain in the existing GameStore.
 
-The add-on ZIP contains its own README, manifest, installer, and runtime. It is versioned in Git for redistribution. No database reset or migration is part of installation.
+Run `python3 verify.py "$EVEJS_SOURCE"` from the extracted archive to check an installed tree against the release; it only reads files. The dashboard's Performance page and `GET /v1/dashboard/telemetry` report event-loop delay, CPU, memory, garbage collection, scheduled work, and time per subsystem.
+
+The add-on ZIP contains its own README, manifest, installer, verifier, and runtime. It is versioned in Git for redistribution. No database reset or migration is part of installation.

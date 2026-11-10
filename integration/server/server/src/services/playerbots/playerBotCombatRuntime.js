@@ -244,15 +244,94 @@ function getTerritoryPriority(bot, systemID) {
   return 6;
 }
 
-function findNearestPirateBase(bot, maxHops = 64) {
-  const space = require("./playerBotSpaceRuntime");
+const PATROL_ROTATION_TABLE = "playerBots";
+const PATROL_ROTATION_PATH = "/_patrolRotation";
+const PATROL_ROUTE_PREVIEW_LIMIT = 3;
+let patrolRotationRepo = null;
+
+function getPatrolRotationRepo() {
+  if (!patrolRotationRepo) {
+    patrolRotationRepo = require("../../gameStore/tableRepository")
+      .createTableRepository("service:playerbots", { strict: true });
+  }
+  return patrolRotationRepo;
+}
+
+function isPatrolRotationEnabled() {
+  return process.env.EVEJS_PLAYER_BOTS_PATROL_ROTATION !== "0";
+}
+
+// Rotation memory is advisory: an unreadable ledger only means the next
+// choice is made without history.
+function readPatrolLedger() {
+  try {
+    const repo = getPatrolRotationRepo();
+    repo.ensureTable(PATROL_ROTATION_TABLE);
+    const result = repo.read(PATROL_ROTATION_TABLE, PATROL_ROTATION_PATH);
+    return result && result.success && result.data && typeof result.data === "object" ? result.data : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function recordPatrolDeployment(operation) {
+  if (!operation || !isPatrolRotationEnabled()) return false;
+  const systemID = normalizeID(operation.targetSystemID);
+  if (!systemID || !operation.operationID) return false;
+  try {
+    const rotation = require("./playerBotPatrolRotation");
+    const next = rotation.recordDeployment(readPatrolLedger(), {
+      operationID: operation.operationID,
+      systemID,
+      characterID: operation.characterID,
+      corporationID: operation.corporationID,
+      mode: operation.mode,
+      atMs: Date.now(),
+    });
+    const repo = getPatrolRotationRepo();
+    repo.ensureTable(PATROL_ROTATION_TABLE);
+    return repo.write(PATROL_ROTATION_TABLE, PATROL_ROTATION_PATH, next).success === true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Active piracy and security patrols per destination system.
+function countPatrolPresenceBySystem(excludeCharacterID = 0) {
+  const presence = new Map();
+  try {
+    const operations = require("./playerBotOperationRuntime");
+    const active = typeof operations.listActiveOperationRecords === "function"
+      ? operations.listActiveOperationRecords() : operations.listActiveOperations();
+    for (const operation of active || []) {
+      if (!operation || operation.kind !== "combat" || !["piracy", "security"].includes(operation.mode)) continue;
+      if (Number(operation.characterID) === Number(excludeCharacterID)) continue;
+      const systemID = normalizeID(operation.targetSystemID);
+      if (systemID) presence.set(systemID, (presence.get(systemID) || 0) + 1);
+    }
+  } catch (_) {
+    presence.clear();
+  }
+  return presence;
+}
+
+// Breadth-first search for pirate systems with a base station and belts. Hop
+// counts come from the search itself; routes are previewed only for the
+// destination that is finally chosen.
+function listPirateBaseCandidates(bot, maxHops = 64, options = {}) {
+  const rotation = require("./playerBotPatrolRotation");
+  const limit = Math.max(1, Math.trunc(Number(options.maxCandidates) || rotation.DEFAULTS.maxCandidates));
+  const extraHops = Math.max(0, Math.trunc(Number(options.extraHopsBeyondNearest ?? rotation.DEFAULTS.extraHopsBeyondNearest)));
   const startSystemID = getCurrentSystemID(bot);
-  if (!startSystemID) return { success: false, message: "Could not determine the bot's current system." };
+  if (!startSystemID) return { success: false, candidates: [], message: "Could not determine the bot's current system." };
   const queue = [{ systemID: startSystemID, hops: 0 }];
   const seen = new Set([startSystemID]);
   const piratePolicy = require("../../space/npc/pirateFactionPolicy");
+  const candidates = [];
+  let nearestHops = null;
   for (let index = 0; index < queue.length; index += 1) {
     const current = queue[index];
+    if (nearestHops !== null && current.hops > nearestHops + extraHops) break;
     const system = worldData.getSolarSystemByID(current.systemID);
     if (system && Number(system.security) <= 0 && !piratePolicy.isSpecialSpaceSystem(current.systemID, system) &&
         !piratePolicy.isWormholeSpaceSystem(current.systemID)) {
@@ -260,17 +339,14 @@ function findNearestPirateBase(bot, maxHops = 64) {
       const station = getCombatBaseLocations(bot, current.systemID)[0];
       const belts = worldData.getAsteroidBeltsForSystem(current.systemID) || [];
       if (faction.supportedLocalFaction && station && belts.length) {
-        const route = space.previewSystemRoute(bot, current.systemID);
-        if (route.success) {
-          return {
-            success: true,
-            systemID: current.systemID,
-            stationID: normalizeID(station.stationID || station.itemID),
-            hops: route.hops,
-            risk: route.risk,
-            factionKey: faction.factionKey,
-          };
-        }
+        candidates.push({
+          systemID: current.systemID,
+          stationID: normalizeID(station.stationID || station.itemID),
+          hops: current.hops,
+          factionKey: faction.factionKey,
+        });
+        if (nearestHops === null) nearestHops = current.hops;
+        if (candidates.length >= limit) break;
       }
     }
     if (current.hops >= maxHops) continue;
@@ -284,7 +360,45 @@ function findNearestPirateBase(bot, maxHops = 64) {
       queue.push({ systemID: nextSystemID, hops: current.hops + 1 });
     }
   }
-  return { success: false, message: "No reachable null-sec pirate region with an NPC station and asteroid belts was found." };
+  return { success: true, candidates };
+}
+
+function findNearestPirateBase(bot, maxHops = 64) {
+  const space = require("./playerBotSpaceRuntime");
+  const rotationEnabled = isPatrolRotationEnabled();
+  const listed = listPirateBaseCandidates(bot, maxHops, rotationEnabled ? {} : { maxCandidates: 1 });
+  if (!listed.success) return { success: false, message: listed.message };
+  const noRegion = { success: false, message: "No reachable null-sec pirate region with an NPC station and asteroid belts was found." };
+  if (!listed.candidates.length) return noRegion;
+  let ranked = listed.candidates;
+  if (rotationEnabled && listed.candidates.length > 1) {
+    const character = require("../character/characterState").getCharacterRecord(bot.characterID) || {};
+    const choice = require("./playerBotPatrolRotation").choosePatrolSystem({
+      candidates: listed.candidates,
+      characterID: bot.characterID,
+      corporationID: character.corporationID || bot.corporationID,
+      nowMs: Date.now(),
+      presenceBySystem: countPatrolPresenceBySystem(bot.characterID),
+      ledger: readPatrolLedger(),
+    });
+    if (!choice.chosen) {
+      return { success: false, message: "No reachable null-sec pirate region is below its patrol limit; all reachable pirate systems already have enough patrols." };
+    }
+    ranked = choice.ranked;
+  }
+  for (const candidate of ranked.slice(0, PATROL_ROUTE_PREVIEW_LIMIT)) {
+    const route = space.previewSystemRoute(bot, candidate.systemID);
+    if (!route.success) continue;
+    return {
+      success: true,
+      systemID: candidate.systemID,
+      stationID: candidate.stationID,
+      hops: route.hops,
+      risk: route.risk,
+      factionKey: candidate.factionKey,
+    };
+  }
+  return noRegion;
 }
 
 function findNearestWarBase(bot, maxHops = 20) {
@@ -1054,7 +1168,11 @@ async function advanceCombat(operation, bot, kit) {
       : operation.miningEscortBeltID
         ? asteroidBelts.find((entry) => Number(entry.itemID) === Number(operation.miningEscortBeltID)) || null
       : asteroidBelts.length
-        ? asteroidBelts[Number(operation.kills || 0) % asteroidBelts.length]
+        // Piracy patrols start at a per-operation belt so pilots sharing a
+        // system do not all open on the same belt.
+        ? asteroidBelts[(Number(operation.kills || 0) + (operation.mode === "piracy" && isPatrolRotationEnabled()
+          ? require("./playerBotPatrolRotation").stableHash32(operation.operationID, operation.characterID) : 0)) %
+          asteroidBelts.length]
         : null;
     const alreadyInSpace = space.getSpaceState(bot).inSpace;
     const undocked = alreadyInSpace ? { success: true } : space.undock(bot, { allowOverCapacityDeparture: true });
@@ -1862,6 +1980,8 @@ module.exports = {
   assessDefensiveResponse,
   authorizeFleetAttackTarget,
   findNearestPirateBase,
+  listPirateBaseCandidates,
+  recordPatrolDeployment,
   findNearestCombatAnomalyBase,
   findNearestWarBase,
   findNearestNullsecConflictBase(bot, maxHops = 24) {

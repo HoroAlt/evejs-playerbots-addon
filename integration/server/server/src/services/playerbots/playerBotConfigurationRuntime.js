@@ -43,6 +43,9 @@ function defaults() {
     directorThinkMinMs: envInteger("EVEJS_PLAYER_BOTS_DIRECTOR_THINK_MIN_MS", 90_000, 15_000, 60 * 60 * 1000),
     directorThinkMaxMs: envInteger("EVEJS_PLAYER_BOTS_DIRECTOR_THINK_MAX_MS", 210_000, 15_000, 60 * 60 * 1000),
     directorInitialSpreadMs: envInteger("EVEJS_PLAYER_BOTS_DIRECTOR_INITIAL_SPREAD_MS", 90_000, 1_000, 60 * 60 * 1000),
+    // Longest synchronous slice a director pass may hold before yielding to
+    // the event loop; 0 keeps the pass in one slice and only measures it.
+    directorSliceBudgetMs: envInteger("EVEJS_PLAYER_BOTS_DIRECTOR_SLICE_BUDGET_MS", 8, 0, 100),
     addonConcurrency: envInteger("EVEJS_PLAYER_BOTS_ADDON_CONCURRENCY", 16, 1, 100),
     addonCycleIntervalMs: envInteger("EVEJS_PLAYER_BOTS_ADDON_INTERVAL_MS", 300_000, 30_000, 24 * 60 * 60 * 1000),
     addonBotDelayMs: envInteger("EVEJS_PLAYER_BOTS_ADDON_BOT_DELAY_MS", 0, 0, 5_000),
@@ -68,6 +71,7 @@ const BOUNDS = Object.freeze({
   directorThinkMinMs: [15_000, 60 * 60 * 1000],
   directorThinkMaxMs: [15_000, 60 * 60 * 1000],
   directorInitialSpreadMs: [1_000, 60 * 60 * 1000],
+  directorSliceBudgetMs: [0, 100],
   addonConcurrency: [1, 100],
   addonCycleIntervalMs: [30_000, 24 * 60 * 60 * 1000],
   addonBotDelayMs: [0, 5_000],

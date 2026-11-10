@@ -30,6 +30,32 @@ let directorAssignmentBatchPromise = null;
 let directorAssignmentBatchStartedAtMs = 0;
 const DIRECTOR_ASSIGNMENT_BATCH_MIN_INTERVAL_MS = 15_000;
 
+// Report handler duration and deadline lateness per job type. Telemetry must
+// never change a job's outcome, so every probe is best effort.
+function measuredJobHandler(handler) {
+  return async function measuredPlayerBotJob(job = {}) {
+    const { performance } = require("node:perf_hooks");
+    const startedAt = performance.now();
+    let telemetry = null;
+    try {
+      telemetry = require("./playerBotPerformanceTelemetry").getTelemetry();
+      const dueAtMs = Number(job && job.dueAtMs) || 0;
+      if (dueAtMs > 0 && job.type) telemetry.recordLateness(job.type, Date.now() - dueAtMs);
+    } catch (_) {
+      telemetry = null;
+    }
+    try {
+      return await handler(job);
+    } finally {
+      if (telemetry) {
+        try {
+          telemetry.recordWork(`scheduler.job.${String(job && job.type || "unknown")}`, performance.now() - startedAt);
+        } catch (_) { /* best effort */ }
+      }
+    }
+  };
+}
+
 function stableHash32(value) {
   let hash = 2166136261;
   for (const character of String(value)) {
@@ -1219,6 +1245,7 @@ async function runAutonomyChunk(characterID, cycleID, includeGlobalMaintenance =
     roster: availableBots,
   });
   activeAutonomyChunks.set(normalizedID, run);
+  const chunkStartedAt = require("node:perf_hooks").performance.now();
   try {
     // A durable operation/industry step reschedules itself after every step.
     // Recovery of missing jobs is batched once per roster pass; querying the
@@ -1226,6 +1253,12 @@ async function runAutonomyChunk(characterID, cycleID, includeGlobalMaintenance =
     return await run;
   } finally {
     if (activeAutonomyChunks.get(normalizedID) === run) activeAutonomyChunks.delete(normalizedID);
+    try {
+      require("./playerBotPerformanceTelemetry").getTelemetry().recordWork(
+        includeGlobalMaintenance === true ? "autonomy.chunk.global" : "autonomy.chunk.pilot",
+        require("node:perf_hooks").performance.now() - chunkStartedAt,
+      );
+    } catch (_) { /* telemetry is best effort */ }
   }
 }
 
@@ -1488,15 +1521,15 @@ module.exports = {
   ensurePendingIndustryCycles,
   ensurePendingNavigationTasks,
   formatAutonomyStatus,
-  handleIndustryCycleJob,
-  handleDirectorThinkJob,
-  handleNavigationJob,
+  handleIndustryCycleJob: measuredJobHandler(handleIndustryCycleJob),
+  handleDirectorThinkJob: measuredJobHandler(handleDirectorThinkJob),
+  handleNavigationJob: measuredJobHandler(handleNavigationJob),
   getAutonomySnapshot,
   isExternalAddonMode,
   aggregateAddonCycleSnapshots,
   runAutonomyChunk,
   publishAutonomySnapshot: saveAutonomySnapshot,
-  handleJob,
+  handleJob: measuredJobHandler(handleJob),
   reconcile,
   runAutonomyCycle,
   bindDurableScheduler(scheduler) {
@@ -1504,6 +1537,9 @@ module.exports = {
       throw new TypeError("playerbot autonomy requires a durable scheduler");
     }
     durableScheduler = scheduler;
+  },
+  getBoundDurableScheduler() {
+    return durableScheduler;
   },
   unbindDurableScheduler(scheduler) {
     if (durableScheduler === scheduler) durableScheduler = null;

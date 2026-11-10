@@ -179,6 +179,7 @@ def install(target: Path, overlay_files: list[str]) -> Path:
                 "addons/playerbots/install.sh",
                 "addons/playerbots/install.py",
                 "addons/playerbots/rollback.py",
+                "addons/playerbots/verify.py",
                 "addons/playerbots/compose.override.yaml",
             }:
                 continue

@@ -39,6 +39,12 @@ The `idle` roster label does not mean the bot has no director work. Use
 `/playerbots ops`, `/playerbots tasks`, and `/playerbots op status <bot>` to see
 the actual assignment and durable operation state.
 
+## Check server performance
+
+Open **Performance** in the dashboard to see event-loop delay, CPU, memory,
+scheduled work and time spent per subsystem. `OPERATIONS.md` explains each
+value and what to change when delay is high.
+
 ## Set the roster size
 
 The last live roster measurement was 1,339 managed bots across 12 corporations.

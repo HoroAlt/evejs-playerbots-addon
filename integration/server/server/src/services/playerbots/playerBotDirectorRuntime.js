@@ -32,6 +32,9 @@ const DEFAULT_MAX_CONCURRENT_WORK = 5_000;
 // cannot turn one pass into hundreds of synchronous authority mutations.
 const MAX_CAPACITY_RESUMES_PER_PASS = 20;
 const MAX_DIRECTOR_ASSIGNMENT_ATTEMPTS_PER_PASS = 20;
+// A pass stops yielding after this much time parked, so a saturated event
+// loop cannot stretch one pass across minutes.
+const MAX_DIRECTOR_PASS_PARKED_MS = 2_000;
 // Refit a small capsule cohort per pass so recovery buys never create a market
 // burst. Deferred/existing recoveries do not consume this start budget.
 const MAX_CAPSULE_RECOVERIES_PER_PASS = 20;
@@ -1425,6 +1428,10 @@ async function runDirectorInternal(bots = [], options = {}) {
     recoveredColonyReviews: 0, recoveredLegacyPIExports: 0, capsuleRecoveries: 0, structureConflictWarsDeclared: 0,
     firstWarGrants: 0, warShipBudgetsFunded: 0, warPilotsRecruited: 0, failures: 0 };
   const skipGlobalMaintenance = options.skipGlobalMaintenance === true;
+  // The pass yields between pilots once its synchronous slice exceeds the
+  // configured budget; a disabled budget only measures.
+  const budget = options._budget || require("./playerBotWorkBudget").createWorkBudget({ enabled: false });
+  budget.switchStage("global-maintenance");
   const playerBotRuntime = require("./playerBotRuntime");
   const allRosterBots = Array.isArray(options.allBots)
     ? options.allBots
@@ -1467,6 +1474,7 @@ async function runDirectorInternal(bots = [], options = {}) {
       );
     }
   }
+  budget.switchStage("capacity");
   if (skipGlobalMaintenance) {
     humanCorporations = onlineHumanCorporationIDs();
     humanControlledBotIDs = BOT_CAPACITY.getHumanControlledBotIDs(allRosterBots);
@@ -1505,7 +1513,7 @@ async function runDirectorInternal(bots = [], options = {}) {
   try {
     summary.jitaOrdersCancelled = skipGlobalMaintenance
       ? 0
-      : await cancelBotOrdersInJita();
+      : await budget.waitFor("market", () => cancelBotOrdersInJita());
   } catch (error) {
     summary.jitaOrdersCancelled = 0;
   }
@@ -1566,6 +1574,8 @@ async function runDirectorInternal(bots = [], options = {}) {
       );
     }
   }
+  budget.switchStage("roster-indexes");
+  await budget.checkpoint();
   const botSystemIDs = new Map(allRosterBots.map((bot) => [Number(bot.characterID), BOT_CAPACITY.getBotSystemID(bot)]));
   if (!activeWorkEntries) activeWorkEntries = listActiveWorkEntries();
   const capacityWorkEntries = getCapacityWorkEntries(activeWorkEntries);
@@ -1619,7 +1629,9 @@ async function runDirectorInternal(bots = [], options = {}) {
     },
   });
   summary.capsuleRecoveryAttempts = capsuleRecoveryBatch.attempts;
+  budget.switchStage("roster-recovery");
   for (const bot of bots) {
+    await budget.checkpoint();
     if (!bot || bot.status === "paused" || bot.autonomyPaused === true) continue;
     const operation = operationRuntime.getOperation(bot.characterID);
     if (!operation || operation.kind !== "colony" || operation.status !== "review" ||
@@ -1648,7 +1660,9 @@ async function runDirectorInternal(bots = [], options = {}) {
   // interrupt a reversible operation while the pilot is docked; pending
   // authority actions, combat, and accepted contracts keep their safe path.
   const structureRuntime = require("./playerBotStructureRuntime");
+  budget.switchStage("structure-priority");
   for (const bot of bots) {
+    await budget.checkpoint();
     if (!bot || humanControlledBotIDs.has(Number(bot.characterID))) continue;
     const operation = operationRuntime.getOperation(bot.characterID);
     if (!operation) continue;
@@ -1672,7 +1686,9 @@ async function runDirectorInternal(bots = [], options = {}) {
       );
     }
   }
-  const candidates = bots
+  budget.switchStage("candidate-selection");
+  await budget.checkpoint();
+  const eligibleCandidates = bots
     .filter((bot) => bot && bot.status !== "paused" && bot.autonomyPaused !== true)
     // A parked actor can have no scene attachment while its persisted pilot
     // location is still in space. It can be attached again when new work begins.
@@ -1694,32 +1710,29 @@ async function runDirectorInternal(bots = [], options = {}) {
         saveBotDirectorAssignment(bot.characterID, assignment);
       }
       return Number(assignment.cooldownUntil || 0) <= now;
-    })
-    .sort((left, right) => {
-      const leftCorp = Number((readSharedCharacterRecord(left.characterID) || {}).corporationID || left.corporationID) || 0;
-      const rightCorp = Number((readSharedCharacterRecord(right.characterID) || {}).corporationID || right.corporationID) || 0;
-      const leftPriority = humanCorporations.has(leftCorp) &&
-        Number(productiveByCorporation.get(leftCorp) || 0) < MIN_PRODUCTIVE_BOTS_PER_HUMAN_CORP ? 0 : 1;
-      const rightPriority = humanCorporations.has(rightCorp) &&
-        Number(productiveByCorporation.get(rightCorp) || 0) < MIN_PRODUCTIVE_BOTS_PER_HUMAN_CORP ? 0 : 1;
-      const leftCharacterID = Number(left.characterID);
-      const rightCharacterID = Number(right.characterID);
-      const leftSystem = botSystemIDs.get(leftCharacterID) || 0;
-      const rightSystem = botSystemIDs.get(rightCharacterID) || 0;
-      const leftLoad = humanControlledBotIDs.has(leftCharacterID)
-        ? -1 : leftSystem ? activeSystemCounts.get(leftSystem) || 0 : Number.MAX_SAFE_INTEGER;
-      const rightLoad = humanControlledBotIDs.has(rightCharacterID)
-        ? -1 : rightSystem ? activeSystemCounts.get(rightSystem) || 0 : Number.MAX_SAFE_INTEGER;
-      return leftPriority - rightPriority ||
-        leftLoad - rightLoad ||
-        Number(getBotDirectorAssignment(left.characterID).lastAssignedAt || 0) -
-        Number(getBotDirectorAssignment(right.characterID).lastAssignedAt || 0);
     });
+  const candidates = sortDirectorCandidates(eligibleCandidates, {
+    getCorporationID: (bot) =>
+      Number((readSharedCharacterRecord(bot.characterID) || {}).corporationID || bot.corporationID) || 0,
+    humanCorporations,
+    productiveByCorporation,
+    humanControlledBotIDs,
+    botSystemIDs,
+    activeSystemCounts,
+    getLastAssignedAt: (bot) => Number(getBotDirectorAssignment(bot.characterID).lastAssignedAt || 0),
+  });
 
   const autonomy = require("./playerBotAutonomyRuntime");
   let assignmentAttempts = 0;
+  budget.switchStage("assignment");
   for (const bot of candidates) {
     if (assignmentAttempts >= MAX_DIRECTOR_ASSIGNMENT_ATTEMPTS_PER_PASS) break;
+    if (await budget.checkpoint()) {
+      // Another scheduler job may have started work for this pilot while the
+      // pass was parked.
+      if (!isEnabled()) break;
+      if (bot.status === "paused" || bot.autonomyPaused === true || isBusy(bot.characterID)) continue;
+    }
     const corporationID = Number((readSharedCharacterRecord(bot.characterID) || {}).corporationID || bot.corporationID) || 0;
     const hasHuman = humanCorporations.has(corporationID);
     const needsMinimumProductiveWork = hasHuman &&
@@ -1783,7 +1796,7 @@ async function runDirectorInternal(bots = [], options = {}) {
       state.skippedOrders[String(order.order_id)] = now;
       order = null;
     } else if (order) assignment = { ...assignment, order };
-    if (assignment && assignment.kind === "order-courier" && !(await courierPays(bot, order))) {
+    if (assignment && assignment.kind === "order-courier" && !(await budget.waitFor("market", () => courierPays(bot, order)))) {
       state.skippedOrders[String(order.order_id)] = now;
       order = null;
       assignment = null;
@@ -2112,14 +2125,21 @@ async function runDirectorInternal(bots = [], options = {}) {
           Number(productiveByCorporation.get(corporationID) || 0) + 1,
         );
       }
-      await autonomy.ensureIndustryCycleStep(bot.characterID);
+      // Scheduler round trips are waits on another process, not a held slice.
+      await budget.waitFor("scheduler", () => autonomy.ensureIndustryCycleStep(bot.characterID));
     }
     saveBotDirectorAssignment(bot.characterID, entry);
   }
+  budget.switchStage("finalize");
   summary.assignmentAttempts = assignmentAttempts;
   summary.assignmentAttemptLimit = MAX_DIRECTOR_ASSIGNMENT_ATTEMPTS_PER_PASS;
   summary.queuedColonySetups = getQueuedColonySetupCount();
   summary.activeRelocations = activeRelocations;
+  // An operator may have switched autonomous work on or off while this pass
+  // was parked; keep that choice instead of the value read at the start.
+  const latestState = readState();
+  state.enabled = latestState.enabled;
+  if (latestState.updatedAt) state.updatedAt = latestState.updatedAt;
   state.lastRunAt = new Date(now).toISOString();
   state.lastSummary = summary;
   saveState(state);
@@ -2132,8 +2152,73 @@ function queueDirectorRun(run) {
   return queued;
 }
 
+// Order candidates by human-corporation need, then system load, then the
+// longest-waiting pilot. Keys are read once per pilot instead of once per
+// comparison; the resulting order is identical.
+function sortDirectorCandidates(candidates, context) {
+  const keys = new Map();
+  for (const bot of candidates) {
+    const characterID = Number(bot.characterID);
+    const corporationID = context.getCorporationID(bot);
+    const systemID = context.botSystemIDs.get(characterID) || 0;
+    keys.set(bot, {
+      priority: context.humanCorporations.has(corporationID) &&
+        Number(context.productiveByCorporation.get(corporationID) || 0) < MIN_PRODUCTIVE_BOTS_PER_HUMAN_CORP ? 0 : 1,
+      load: context.humanControlledBotIDs.has(characterID)
+        ? -1 : systemID ? context.activeSystemCounts.get(systemID) || 0 : Number.MAX_SAFE_INTEGER,
+      lastAssignedAt: context.getLastAssignedAt(bot),
+    });
+  }
+  return candidates.sort((left, right) => {
+    const leftKey = keys.get(left);
+    const rightKey = keys.get(right);
+    return leftKey.priority - rightKey.priority ||
+      leftKey.load - rightKey.load ||
+      leftKey.lastAssignedAt - rightKey.lastAssignedAt;
+  });
+}
+
+function getDirectorSliceBudgetMs() {
+  try {
+    const configured = Number(require("./playerBotConfigurationRuntime").getSettings().directorSliceBudgetMs);
+    return Number.isFinite(configured) && configured >= 0 ? configured : 8;
+  } catch (_) {
+    return 8;
+  }
+}
+
+async function runBudgetedDirector(bots, options) {
+  const sliceBudgetMs = Number.isFinite(Number(options.sliceBudgetMs))
+    ? Number(options.sliceBudgetMs) : getDirectorSliceBudgetMs();
+  const budget = require("./playerBotWorkBudget").createWorkBudget({
+    budgetMs: sliceBudgetMs > 0 ? sliceBudgetMs : 8,
+    enabled: sliceBudgetMs > 0,
+    maxParkedMs: MAX_DIRECTOR_PASS_PARKED_MS,
+  });
+  let summary = null;
+  try {
+    summary = await runDirectorInternal(bots, { ...options, _budget: budget });
+    return summary;
+  } finally {
+    const pass = budget.finish();
+    if (summary && typeof summary === "object") {
+      summary.passWallMs = Math.round(pass.wallDurationMs);
+      summary.passYields = pass.yields;
+      summary.passMaximumSliceMs = Math.round(pass.maximumSliceMs * 10) / 10;
+      summary.passSliceBudgetMs = pass.enabled ? pass.budgetMs : 0;
+      summary.passExternalWaitMs = Math.round(pass.totalExternalWaitMs);
+      summary.passParkedMs = Math.round(pass.totalParkedMs);
+      summary.passYieldingSuspended = pass.yieldingSuspended;
+    }
+    try {
+      require("./playerBotPerformanceTelemetry").getTelemetry().recordBudget(
+        options.skipGlobalMaintenance === true ? "director.pass.idle" : "director.pass.full", pass);
+    } catch (_) { /* telemetry is best effort */ }
+  }
+}
+
 async function runDirector(bots = [], options = {}) {
-  return queueDirectorRun(() => runDirectorInternal(bots, options));
+  return queueDirectorRun(() => runBudgetedDirector(bots, options));
 }
 
 async function ensureMinimumProductiveWork(corporationID) {
@@ -2227,7 +2312,7 @@ module.exports = {
     processCapsuleRecoveryCandidates, shouldResetLegacyWarSpecialtyCooldown,
     shouldResetStaleNoWorkCooldown, isCombatOpportunityUnavailable,
     chooseCombatOpportunityFallback, chooseIndustryReviewFallback,
-    industryCycleNeedsManualReview,
+    industryCycleNeedsManualReview, sortDirectorCandidates,
     maxCapacityResumesPerPass: MAX_CAPACITY_RESUMES_PER_PASS,
     maxDirectorAssignmentAttemptsPerPass: MAX_DIRECTOR_ASSIGNMENT_ATTEMPTS_PER_PASS },
   formatDirectorStatus,

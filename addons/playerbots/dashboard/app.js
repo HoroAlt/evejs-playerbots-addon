@@ -5,7 +5,8 @@ const DEFAULT_OPERATIONS_PAGE_SIZE = 100;
 const REFRESH_MS = 15_000;
 const OPERATIONS_REFRESH_MS = 60_000;
 const ACTIVITY_REFRESH_MS = 60_000;
-const state = { snapshot: null, page: 0, totalPilots: 0, operationPage: 0, operationPageSize: DEFAULT_OPERATIONS_PAGE_SIZE, operationRequestID: 0, totalOperations: 0, operationsLoadedAt: 0, activityPage: 0, activityPageSize: 100, activityRequestID: 0, activityLoadedAt: 0, activityTotal: 0, killboardLoadedAt: 0, view: "overview" };
+const PERFORMANCE_REFRESH_MS = 15_000;
+const state = { performanceLoadedAt: 0, snapshot: null, page: 0, totalPilots: 0, operationPage: 0, operationPageSize: DEFAULT_OPERATIONS_PAGE_SIZE, operationRequestID: 0, totalOperations: 0, operationsLoadedAt: 0, activityPage: 0, activityPageSize: 100, activityRequestID: 0, activityLoadedAt: 0, activityTotal: 0, killboardLoadedAt: 0, view: "overview" };
 const $ = (id) => document.getElementById(id);
 const number = (value) => Number(value || 0).toLocaleString("en-US");
 const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
@@ -41,12 +42,13 @@ function setView(view) {
   state.view = view;
   document.querySelectorAll(".page").forEach((page) => page.classList.toggle("active", page.id === `view-${view}`));
   document.querySelectorAll(".nav-link").forEach((link) => link.classList.toggle("active", link.dataset.view === view));
-  const title = ({ overview: "Overview", pilots: "Pilots", corporations: "Corporations", systems: "Systems", operations: "Operations", killboard: "Killboard", territory: "Territory", settings: "Settings" })[view] || "Overview";
+  const title = ({ overview: "Overview", pilots: "Pilots", corporations: "Corporations", systems: "Systems", operations: "Operations", killboard: "Killboard", territory: "Territory", performance: "Performance", settings: "Settings" })[view] || "Overview";
   $("page-name").textContent = title;
   if (view === "pilots") void loadPilots();
   if (view === "operations") { void loadOperations(true); void loadPilotActivity(true); }
   if (view === "killboard") void loadKillboard(true);
   if (view === "settings") void loadSettings();
+  if (view === "performance") void loadPerformance(true);
 }
 
 function setError(error) {
@@ -331,6 +333,7 @@ async function loadSettings() {
       directorThinkMinSeconds: millisecondsFieldToSeconds(settings, "directorThinkMinMs"),
       directorThinkMaxSeconds: millisecondsFieldToSeconds(settings, "directorThinkMaxMs"),
       directorInitialSpreadSeconds: millisecondsFieldToSeconds(settings, "directorInitialSpreadMs"),
+      directorSliceBudgetMs: settings.directorSliceBudgetMs,
       addonConcurrency: settings.addonConcurrency,
       addonCycleIntervalSeconds: millisecondsFieldToSeconds(settings, "addonCycleIntervalMs"),
       addonBotDelayMs: settings.addonBotDelayMs,
@@ -425,7 +428,7 @@ async function saveSettings(event) {
   event.preventDefault();
   const form = $("settings-form");
   const body = {};
-  for (const key of ["rosterTarget", "rosterCeiling", "maxOnline", "maxPerSystem", "maxConcurrentWork", "maxConcurrentRelocations", "maxConcurrentColonySetups", "addonConcurrency", "addonBotDelayMs", "rosterSeedBatchSize", "rosterSeedMaxEventLoopP95Ms", "rosterSeedMaxProcessCpuPercent", "rosterSeedMaximumSingleBotMs"]) {
+  for (const key of ["rosterTarget", "rosterCeiling", "maxOnline", "maxPerSystem", "maxConcurrentWork", "maxConcurrentRelocations", "maxConcurrentColonySetups", "addonConcurrency", "addonBotDelayMs", "directorSliceBudgetMs", "rosterSeedBatchSize", "rosterSeedMaxEventLoopP95Ms", "rosterSeedMaxProcessCpuPercent", "rosterSeedMaximumSingleBotMs"]) {
     body[key] = Number(form.elements.namedItem(key).value);
   }
   body.connectionWindowMs = Math.round(Number(form.elements.namedItem("connectionWindowHours").value) * 3_600_000);
@@ -453,6 +456,71 @@ async function saveSettings(event) {
     $("settings-alert").textContent = error.message || String(error);
     $("settings-alert").classList.remove("hidden");
   } finally { button.disabled = false; }
+}
+
+function milliseconds(value) {
+  const ms = Number(value);
+  if (!Number.isFinite(ms)) return "—";
+  return ms >= 1_000 ? `${(ms / 1_000).toFixed(2)} s` : `${ms.toFixed(ms >= 10 ? 0 : 1)} ms`;
+}
+function megabytes(bytes) { return `${number(Math.round(Number(bytes || 0) / 1_048_576))} MiB`; }
+function cpuShare(value) { return value && Number.isFinite(Number(value.totalPercent)) ? `${Number(value.totalPercent).toFixed(0)}%` : "—"; }
+
+function renderPerformance(data) {
+  const loop = data.eventLoop || {};
+  const current = loop.current || {};
+  const recent = loop.recent || {};
+  const cpu = data.cpu || {};
+  const memory = data.memory || {};
+  const gc = (data.gc && data.gc.recent) || {};
+  const scene = data.scene || {};
+  const guard = data.loadGuard || {};
+  const loopState = String(loop.state || "unknown");
+  const stateLabel = ({ healthy: "Healthy", constrained: "Constrained", degraded: "Degraded", overloaded: "Overloaded" })[loopState] || "Unknown";
+  const stateColor = ({ healthy: "green", constrained: "amber", degraded: "amber", overloaded: "red" })[loopState] || "cyan";
+  $("performance-state").textContent = `Event loop: ${stateLabel}`;
+  const metricRows = [
+    ["EVENT-LOOP DELAY P95", milliseconds(current.p95Ms), `${stateLabel} · longest ${milliseconds(current.maxMs)} in the last ${number(loop.windowSeconds)} s · last ${number(recent.windows)} samples peaked at ${milliseconds(recent.maxOfMaxMs)}`, stateColor],
+    ["EVEJS CPU", cpuShare(cpu.process), `Main thread ${cpuShare(cpu.mainThread)} of one core · other threads ${cpu.offMainThreadPercent === null || cpu.offMainThreadPercent === undefined ? "—" : `${Number(cpu.offMainThreadPercent).toFixed(0)}%`} · host ${cpu.host?.busyPercent === null || cpu.host?.busyPercent === undefined ? "—" : `${Number(cpu.host.busyPercent).toFixed(0)}%`} busy across ${number(cpu.host?.logicalCpus)} CPUs`, "cyan"],
+    ["MEMORY", megabytes(memory.rssBytes), `Heap ${megabytes(memory.heapUsedBytes)} of ${megabytes(memory.heapSizeLimitBytes)} limit (${Number(memory.heapUsedOfLimitPercent || 0).toFixed(0)}%) · garbage collection p95 ${milliseconds(gc.p95DurationMs)}, longest ${milliseconds(gc.maximumDurationMs)}`, "violet"],
+    ["BOT SHIPS IN SPACE", number(scene.botsInSpace), `${number(scene.systemsWithBotsInSpace)} systems · ${number(scene.botsInUnobservedSystems)} in systems with no human pilot in space · ${number(scene.humansInSpace)} human pilots in space`, "amber"],
+  ];
+  $("performance-metrics").innerHTML = metricRows.map(([label, value, detail, color]) => `
+    <article class="metric ${color}"><div class="metric-label">${escapeHTML(label)}</div><div class="metric-value">${escapeHTML(value)}</div><div class="metric-detail">${escapeHTML(detail)}</div></article>`).join("");
+
+  const scheduler = data.scheduler || {};
+  const queue = scheduler.queue || {};
+  const lateness = scheduler.lateness || {};
+  const types = [...new Set([...Object.keys(queue.byType || {}), ...Object.keys(lateness)])].sort();
+  $("performance-queue-rows").innerHTML = types.map((type) => {
+    const row = (queue.byType || {})[type] || {};
+    const late = lateness[type] || {};
+    return `<tr><td class="mono">${escapeHTML(type)}</td><td class="numeric">${number(row.scheduled)}</td><td class="numeric">${number(row.running)}</td><td class="numeric">${number(row.due)}</td><td class="numeric">${escapeHTML(row.due ? milliseconds(row.oldestOverdueMs) : "—")}</td><td class="numeric">${escapeHTML(late.samples ? milliseconds(late.p95Ms) : "—")}</td><td class="numeric">${escapeHTML(late.samples ? milliseconds(late.maximumMs) : "—")}</td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="empty">${escapeHTML(queue.error ? `Scheduler queue unavailable: ${queue.error}` : "No scheduled playerbot work was reported.")}</td></tr>`;
+  const dispatch = scheduler.dispatch;
+  $("performance-queue-note").textContent = `${dispatch ? `${number(dispatch.active)} of ${number(dispatch.maxConcurrent)} dispatch slots in use, ${number(dispatch.queued)} waiting · ` : ""}Bot steps in parallel: ${number(guard.effectiveStepConcurrency)} of ${number(guard.configuredStepConcurrency)} configured${queue.sampleDurationMs !== undefined ? ` · queue scan took ${milliseconds(queue.sampleDurationMs)}` : ""}${queue.refreshing ? " · a new scan is still running; the previous one is shown" : ""}`;
+
+  const work = Object.entries(data.work || {})
+    .sort((left, right) => Number(right[1].p95Ms || 0) - Number(left[1].p95Ms || 0))
+    .slice(0, 25);
+  $("performance-work-rows").innerHTML = work.map(([name, row]) => `<tr><td class="mono">${escapeHTML(name)}</td><td class="numeric">${number(row.samples)}</td><td class="numeric">${escapeHTML(milliseconds(row.averageMs))}</td><td class="numeric">${escapeHTML(milliseconds(row.p95Ms))}</td><td class="numeric">${escapeHTML(milliseconds(row.maximumMs))}</td><td class="numeric">${number(row.yields)}</td><td class="numeric">${escapeHTML(row.maximumSliceMs ? milliseconds(row.maximumSliceMs) : "—")}</td><td>${escapeHTML(row.lastAt ? new Date(row.lastAt).toLocaleTimeString() : "—")}</td></tr>`).join("") ||
+    `<tr><td colspan="8" class="empty">No playerbot pass has been measured since EveJS started.</td></tr>`;
+}
+
+// Telemetry is requested only while the Performance page is open.
+async function loadPerformance(force = false) {
+  if (!force && Date.now() - state.performanceLoadedAt < PERFORMANCE_REFRESH_MS - 1_000) return;
+  const alert = $("performance-alert");
+  try {
+    const data = await getJSON("/api/telemetry");
+    state.performanceLoadedAt = Date.now();
+    alert.classList.add("hidden");
+    renderPerformance(data);
+  } catch (error) {
+    alert.textContent = `Performance telemetry is unavailable: ${error.message || error}`;
+    alert.classList.remove("hidden");
+    $("performance-state").textContent = "Telemetry unavailable";
+  }
 }
 
 async function loadPilots() {
@@ -492,6 +560,7 @@ async function refresh() {
     if (state.view === "operations") { await loadOperations(); await loadPilotActivity(); }
     if (state.view === "settings") await loadSettings();
     if (state.view === "killboard") await loadKillboard();
+    if (state.view === "performance") await loadPerformance();
   } catch (error) { setError(error); }
 }
 

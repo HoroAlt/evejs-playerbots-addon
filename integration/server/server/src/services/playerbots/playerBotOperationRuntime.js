@@ -4769,6 +4769,7 @@ function startCombat(botQuery, mode = "security", options = {}) {
     ? `Preparing to clear combat anomaly ${target.siteLabel} (tier ${target.siteDifficulty}, ${target.siteFactionKey || "unknown NPC faction"}) in system ${operation.targetSystemID}.`
     : `${normalizedMode === "piracy" ? "Piracy" : normalizedMode === "war" ? "War" : normalizedMode === "nullsec-conflict" ? "Null-sec structure conflict" : "Security"} patrol preparing for system ${operation.targetSystemID}${operation.plannedRouteHops ? ` (${operation.plannedRouteHops} jumps)` : ""}.`);
   saveOperation(operation);
+  if (normalizedMode === "piracy" && !defensiveTargetID) combat.recordPatrolDeployment(operation);
   if (defensiveTargetID) wakeThreatenedBot(bot.characterID, "immediate defensive combat");
   return { success: true, operation, message: target.siteInstanceID
     ? `${bot.characterName} will clear ${target.siteLabel} (tier ${target.siteDifficulty}) in system ${operation.targetSystemID}, recover the loot and sell it outside Jita.`

@@ -8,4 +8,4 @@ The ZIP under `dist/` is the standard install and redistribution artifact. Keep 
 python3 tools/playerbots/build-addon-package.py --compat-root "/path/to/EveJS-261108.1"
 ```
 
-Installation and rollback instructions are in `INSTALLATION.md`; operator commands are in `GUIDE.md` and `OPERATIONS.md`. Tests that require EveJS runtime services must run from a compatible EveJS checkout after applying the add-on overlay.
+Installation, verification (`verify.py`) and rollback instructions are in `INSTALLATION.md`; operator commands are in `GUIDE.md` and `OPERATIONS.md`. Tests that require EveJS runtime services must run from a compatible EveJS checkout after applying the add-on overlay.

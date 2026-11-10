@@ -323,6 +323,13 @@ function createDashboardServer(options = {}) {
       }
       return proxyApi(response, "/v1/dashboard/seed-status");
     }
+    if (url.pathname === "/api/telemetry") {
+      if (request.method !== "GET") {
+        send(response, 405, "text/plain; charset=utf-8", "Method not allowed.", { allow: "GET" });
+        return;
+      }
+      return proxyApi(response, "/v1/dashboard/telemetry");
+    }
     if (url.pathname === "/api/bots") {
       if (request.method !== "GET") {
         send(response, 405, "text/plain; charset=utf-8", "Method not allowed.", { allow: "GET" });

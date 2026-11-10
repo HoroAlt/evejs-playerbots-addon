@@ -636,6 +636,78 @@ this setting reaches the process that dispatches jobs on the supported base.
 turns off the API provider; stop `playerbots-addon` as well. Do not remove the
 token if the server and add-on are expected to reconnect.
 
+## Performance telemetry
+
+Open **Performance** in the dashboard, or read the same data from the private
+API (`GET /v1/dashboard/telemetry`, bearer token required). Telemetry is
+read-only and adds no host port.
+
+| Section | What it reports |
+| --- | --- |
+| Event loop | Delay in the last five-second sample (mean, p50, p95, p99, longest) and across the last ten minutes. |
+| CPU | EveJS process CPU, its main thread alone, the remainder on other threads, and how busy the host is. Percentages are of one CPU core. |
+| Memory and garbage collection | Resident memory, heap against its limit, and the duration of recent collections. |
+| Scheduler | Playerbot jobs scheduled, running and due, the oldest overdue job, and how late jobs start. |
+| Subsystem work | Duration of director passes and their stages, per-pilot autonomy steps, scheduled jobs by type, and the dashboard summary. |
+| Scene load | Bot ships in space, the systems they occupy, and how many are in systems with no human pilot in space. |
+
+The event-loop state uses the same boundaries as the add-on's load guard:
+
+| p95 delay | State | What the add-on does |
+| --- | --- | --- |
+| up to 50 ms | Healthy | Runs the configured number of bot steps in parallel. |
+| up to 100 ms | Constrained | Runs at most four bot steps in parallel. |
+| up to 250 ms | Degraded | Runs at most two bot steps in parallel. |
+| above 250 ms | Overloaded | Runs one bot step at a time and pauses roster seeding. |
+
+When delay stays high, find the largest entry under **Work by subsystem** and
+reduce load in this order:
+
+1. Lower **Bot steps in parallel** or raise **Delay per bot**.
+2. Lengthen the director think interval.
+3. Lower **General work slots**.
+4. Lower **Maximum online bots**.
+
+Do not raise the load-guard or seeding thresholds to make the page look
+healthy. These numbers describe this server under its current load; they are
+not a capacity guarantee for other hardware.
+
+The scheduler queue is scanned only when the page or endpoint is read, and the
+result is reused for 60 seconds (`EVEJS_PLAYER_BOTS_TELEMETRY_BACKLOG_INTERVAL_MS`).
+On a loaded server that scan can be slow, so a request waits at most 1.5
+seconds for it and otherwise shows the previous scan. Subsystem durations
+include time spent waiting on the market or scheduler process; that wait is
+reported separately and is not part of any held slice.
+Set `EVEJS_PLAYER_BOTS_TELEMETRY_FILE=1` to also write a snapshot every minute
+to `runtime-performance/playerbots-latest.json` under the EveJS data root.
+Keep that file out of public source control.
+
+## Director slice budget
+
+A director pass walks the whole online roster. **Director slice budget**
+(Settings, or `EVEJS_PLAYER_BOTS_DIRECTOR_SLICE_BUDGET_MS`, default `8`) is the
+longest the pass runs before it hands control back to EveJS and continues
+afterwards. A pilot that started other work while the pass was waiting is
+skipped for that pass. Assignment rules, attempt limits and capacity limits are
+unchanged. When EveJS is already overloaded each hand-back returns late, so a
+pass stops yielding after two seconds of accumulated waiting and finishes in
+one go; the Performance page counts those passes. Set the budget to `0` to run
+each pass in one slice, as earlier releases did; the pass is still measured.
+
+## Patrol rotation
+
+Piracy pilots choose among up to eight pirate systems within six jumps of the
+nearest one. The choice weighs distance, patrols already assigned to each
+system, and deployments in the last six hours. Each corporation rotates on its
+own period of 45 to 180 minutes, at most six patrols share a system, and a
+corporation that deployed to the same system in three consecutive periods
+moves elsewhere while another system is available. A pilot with no system
+below the patrol limit receives other work. Target legality is still decided
+by Crimewatch, war status and the combat safety checks.
+
+Set `EVEJS_PLAYER_BOTS_PATROL_ROTATION=0` and restart `server` to return to
+nearest-system selection.
+
 ## Confirm the API is private
 
 The Compose override does not publish port `26004`. Confirm the rendered

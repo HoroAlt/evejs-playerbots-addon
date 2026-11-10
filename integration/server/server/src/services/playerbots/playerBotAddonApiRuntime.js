@@ -39,6 +39,7 @@ function createPlayerBotAddonApiRuntime(options = {}) {
   const getConnectedCharacterIDs = options.getConnectedCharacterIDs || (() =>
     require("./playerBotSpaceRuntime").getConnectedBotCharacterIDs());
   const logger = options.logger || require("../../utils/logger");
+  const telemetry = options.telemetry || require("./playerBotPerformanceTelemetry").getTelemetry();
   const eventLoopDelay = options.eventLoopDelayMonitor || monitorEventLoopDelay({ resolution: 20 });
   const getEventLoopDelayP95Ms = options.getEventLoopDelayP95Ms || (() => Number(eventLoopDelay.percentile(95)) / 1_000_000 || 0);
   eventLoopDelay.enable();
@@ -211,7 +212,9 @@ function createPlayerBotAddonApiRuntime(options = {}) {
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/dashboard/summary") {
+      const summaryStartedAt = performance.now();
       const summary = dashboard.getSnapshot();
+      telemetry.recordWork("dashboard.snapshot", performance.now() - summaryStartedAt);
       if (cycle && summary && typeof summary === "object") {
         sendJson(response, 200, {
           ...summary,
@@ -282,6 +285,23 @@ function createPlayerBotAddonApiRuntime(options = {}) {
     }
     if (request.method === "GET" && url.pathname === "/v1/dashboard/seed-status") {
       sendJson(response, 200, rosterSeedStatus());
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/dashboard/telemetry") {
+      const snapshot = await telemetry.getSnapshot({
+        scheduler: typeof autonomy.getBoundDurableScheduler === "function" ? autonomy.getBoundDurableScheduler() : null,
+        playerBots,
+      });
+      const guardSettings = cycle ? cycle.settings : configuration.getSettings();
+      sendJson(response, 200, {
+        ...snapshot,
+        loadGuard: {
+          eventLoopP95Ms: Math.round(currentEventLoopP95Ms() * 10) / 10,
+          processCpuPercent: Math.round(processCpuPercent * 10) / 10,
+          configuredStepConcurrency: Math.max(1, Math.min(100, Math.trunc(Number(guardSettings.addonConcurrency) || 100))),
+          effectiveStepConcurrency: recommendedCycleConcurrency(guardSettings),
+        },
+      });
       return;
     }
     if (request.method === "PATCH" && url.pathname === "/v1/dashboard/settings") {
@@ -656,12 +676,14 @@ function createPlayerBotAddonApiRuntime(options = {}) {
         });
       });
       logger.info(`[PlayerBotsAddon] Internal API listening on ${host}:${server.address().port}`);
+      telemetry.start();
       return this.getDiagnostics();
     },
     async shutdown() {
       cycle = null;
       eventLoopDelay.disable();
       clearInterval(loadSampleTimer);
+      telemetry.stop();
       if (!server || !server.listening) return;
       const current = server;
       server = null;

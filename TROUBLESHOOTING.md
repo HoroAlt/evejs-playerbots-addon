@@ -108,6 +108,23 @@ that Market is healthy and that the server can reach its configured game data
 and normal EveJS services. The sidecar does not connect to or repair databases.
 Do not rebuild, reseed, or delete a database as a troubleshooting shortcut.
 
+## The Performance page shows high event-loop delay
+
+Read **Work by subsystem** first: the entry with the largest p95 is where the
+EveJS main thread spends its time. A director pass with a long **Longest
+slice** and no yields means the slice budget is `0`; set it back to `8` in
+Settings. High process CPU with low main-thread CPU points to garbage
+collection or other threads, so check the memory card. A growing **Oldest
+overdue** value means scheduled work is falling behind; follow the reduction
+order in `OPERATIONS.md`.
+
+## `verify.py` reports files that do not match
+
+Exit code `1` lists each file as `missing`, `modified`, or `original`. Files
+marked `original` were never replaced; run `install.py` again. Files marked
+`modified` were changed after installation; compare them with the release
+before reinstalling with `--replace-conflicts`, which backs each one up first.
+
 ## Undo installation
 
 Stop `playerbots-addon` and `server`, then run `python3 rollback.py <evejs-root>`.

@@ -13,13 +13,39 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = "0.2.137"
+VERSION = "0.2.138"
 EVEJS_VERSION = "261108.1"
 PACKAGE_NAME = f"EveJS-Playerbots-Addon-v{VERSION}"
 OUTPUT = ROOT / "dist" / f"evejs-playerbots-addon-v{VERSION}.zip"
 EXTERNAL_OVERLAY_LIST = ROOT / "tools/playerbots/addon-overlay-files.txt"
 ADDON_SOURCE = ROOT / "addons/playerbots"
-INTEGRATION_SOURCE = ROOT / "integration/server"
+INSTALLER_FILES = {"install.sh", "install.py", "rollback.py", "verify.py"}
+# Keep in step with addons/playerbots/verify.py.
+SUBSYSTEM_PREFIXES = (
+    ("server/src/services/playerbots/", "playerbots-core"),
+    ("server/src/services/scheduler/", "scheduler"),
+    ("server/src/services/market/", "economy-authorities"),
+    ("server/src/services/account/", "economy-authorities"),
+    ("server/src/services/contracts/", "economy-authorities"),
+    ("server/src/services/corporation/", "corporation-sovereignty-structures"),
+    ("server/src/services/sovereignty/", "corporation-sovereignty-structures"),
+    ("server/src/services/structure/", "corporation-sovereignty-structures"),
+    ("server/src/services/chat/", "chat-commands"),
+    ("server/src/services/dungeon/", "dungeon"),
+    ("server/src/services/planet/", "planetary"),
+    ("server/src/services/fleets/", "fleets"),
+    ("server/src/space/", "space-runtime"),
+    ("server/src/gameStore/", "gamestore"),
+    ("server/assets/fittings/", "fittings"),
+    ("server/src/_secondary/fitting/", "fittings"),
+)
+
+
+def subsystem_for(relative: str) -> str:
+    for prefix, name in SUBSYSTEM_PREFIXES:
+        if relative.startswith(prefix):
+            return name
+    return "platform"
 
 
 def sha256(path: Path) -> str:
@@ -51,20 +77,19 @@ def main() -> int:
     compat_root = Path(args.compat_root).expanduser().resolve()
     output = Path(args.output).expanduser().resolve()
 
-    addon_version = str(json.loads((ADDON_SOURCE / "manifest.json").read_text(encoding="utf-8")).get("version", ""))
-    if addon_version != VERSION:
-        raise SystemExit(f"Add-on source must be version {VERSION}, found {addon_version!r}.")
+    if version_at(ROOT, "package.json") != EVEJS_VERSION or version_at(ROOT, "server/package.json") != EVEJS_VERSION:
+        raise SystemExit(f"Working tree must be EveJS {EVEJS_VERSION}.")
     if version_at(compat_root, "package.json") != EVEJS_VERSION or version_at(compat_root, "server/package.json") != EVEJS_VERSION:
         raise SystemExit(f"Compatibility source must be EveJS {EVEJS_VERSION}: {compat_root}")
 
     external = [line.strip() for line in EXTERNAL_OVERLAY_LIST.read_text(encoding="utf-8").splitlines()
                 if line.strip() and not line.lstrip().startswith("#")]
-    playerbot_files = sorted(path.relative_to(INTEGRATION_SOURCE).as_posix()
-                             for path in (INTEGRATION_SOURCE / "server/src/services/playerbots").rglob("*.js"))
+    playerbot_files = sorted(path.relative_to(ROOT).as_posix()
+                             for path in (ROOT / "server/src/services/playerbots").rglob("*.js"))
     overlay_files = sorted(set(external + playerbot_files))
     records = {}
     for relative in overlay_files:
-        current = INTEGRATION_SOURCE / relative
+        current = ROOT / relative
         original = compat_root / relative
         if not current.is_file():
             raise SystemExit(f"Current integration file is missing: {relative}")
@@ -72,6 +97,7 @@ def main() -> int:
             "baseSha256": sha256(original) if original.is_file() else None,
             "sourceSha256": sha256(current),
             "overlaySha256": sha256(current),
+            "subsystem": subsystem_for(relative),
         }
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -79,18 +105,21 @@ def main() -> int:
         stage = Path(temporary) / PACKAGE_NAME
         (stage / "integration/server").mkdir(parents=True)
         for relative in overlay_files:
-            copy_file(INTEGRATION_SOURCE / relative, stage / "integration/server" / relative)
+            copy_file(ROOT / relative, stage / "integration/server" / relative)
 
+        addon_files = {}
         for source in sorted(ADDON_SOURCE.rglob("*")):
             if not source.is_file() or "__pycache__" in source.parts or source.suffix == ".pyc":
                 continue
             relative = source.relative_to(ADDON_SOURCE).as_posix()
-            if relative in {"install.sh", "install.py", "rollback.py"}:
+            if relative in INSTALLER_FILES:
                 continue
             copy_file(source, stage / "addons/playerbots" / relative)
+            addon_files[f"addons/playerbots/{relative}"] = sha256(source)
 
         copy_file(ADDON_SOURCE / "install.py", stage / "install.py")
         copy_file(ADDON_SOURCE / "rollback.py", stage / "rollback.py")
+        copy_file(ADDON_SOURCE / "verify.py", stage / "verify.py")
         copy_file(ROOT / "addons/playerbots/compose.override.yaml", stage / "compose.override.yaml")
         copy_file(ADDON_SOURCE / "README.md", stage / "README.md")
         for name in ("INSTALLATION.md", "OPERATIONS.md", "TROUBLESHOOTING.md", "GUIDE.md", "LICENSE", "THIRD_PARTY_NOTICES.md"):
@@ -116,9 +145,10 @@ def main() -> int:
             "sourceOverlay": "integration/manifest.json",
         }, indent=2) + "\n", encoding="utf-8")
         (stage / "integration/manifest.json").write_text(json.dumps({
-            "schemaVersion": 2,
+            "schemaVersion": 3,
             "evejsVersion": EVEJS_VERSION,
             "files": records,
+            "addonFiles": addon_files,
         }, indent=2) + "\n", encoding="utf-8")
 
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
@@ -126,7 +156,9 @@ def main() -> int:
                 if path.is_file():
                     archive.write(path, (Path(PACKAGE_NAME) / path.relative_to(stage)).as_posix())
 
-    print(f"Created {output} ({output.stat().st_size:,} bytes, {len(overlay_files)} guarded source files).")
+    subsystems = sorted({record["subsystem"] for record in records.values()})
+    print(f"Created {output} ({output.stat().st_size:,} bytes, {len(overlay_files)} guarded source files "
+          f"in {len(subsystems)} subsystems, {len(addon_files)} add-on process files).")
     print(f"Compatibility base: EveJS {EVEJS_VERSION} at {compat_root}")
     return 0
 

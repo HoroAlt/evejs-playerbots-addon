@@ -43,11 +43,11 @@ installation never resets, moves, or reseeds them.
 
 ## Install from the release ZIP
 
-Extract `evejs-playerbots-addon-v0.2.137.zip`. In a terminal, pass the EveJS
+Extract `evejs-playerbots-addon-v0.2.138.zip`. In a terminal, pass the EveJS
 source directory as the single positional argument:
 
 ```sh
-cd EveJS-Playerbots-Addon-v0.2.137
+cd EveJS-Playerbots-Addon-v0.2.138
 EVEJS_SOURCE="/path/to/your EveJS checkout"
 ./install.sh "$EVEJS_SOURCE"
 ```
@@ -112,6 +112,28 @@ installer does not assume a fixed checkout directory or drive letter.
 
 Use `--start` only when the existing EveJS Market service is already healthy.
 No Linux-only shell features are required by `install.py`.
+
+## Verify an installation
+
+`verify.py` compares an EveJS source tree with this release and reports the
+result by subsystem. It only reads files: it does not start Docker, change the
+source tree, or open a database.
+
+```sh
+python3 verify.py "$EVEJS_SOURCE"
+```
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Every guarded file and add-on file matches this release. |
+| `1` | At least one file is missing or differs. The report lists each one. |
+| `3` | The tree is the unmodified supported EveJS source; the add-on is not installed. |
+| `2` | The path is not an EveJS source tree, or the package manifest is unreadable. |
+
+Add `--strict` to treat an uninstalled tree as a failure, `--json` for a
+machine-readable report, or `--subsystem playerbots-core` to check one
+subsystem. The report states only whether the add-on API token is present; it
+never prints the token.
 
 ## What the installer changes
 

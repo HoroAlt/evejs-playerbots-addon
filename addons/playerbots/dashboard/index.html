@@ -24,6 +24,7 @@
         <a class="nav-link" href="#operations" data-view="operations"><span class="nav-icon">⌁</span>Operations</a>
         <a class="nav-link" href="#killboard" data-view="killboard"><span class="nav-icon">✕</span>Killboard</a>
         <a class="nav-link" href="#territory" data-view="territory"><span class="nav-icon">⬡</span>Territory</a>
+        <a class="nav-link" href="#performance" data-view="performance"><span class="nav-icon">∿</span>Performance</a>
         <a class="nav-link" href="#settings" data-view="settings"><span class="nav-icon">⚙</span>Settings</a>
       </nav>
       <div class="rail-bottom">
@@ -122,6 +123,7 @@
             <label>Director think minimum (seconds)<input name="directorThinkMinSeconds" type="number" min="15" max="3600" required></label>
             <label>Director think maximum (seconds)<input name="directorThinkMaxSeconds" type="number" min="15" max="3600" required></label>
             <label>Initial director spread (seconds)<input name="directorInitialSpreadSeconds" type="number" min="1" max="3600" required></label>
+            <label>Director slice budget (milliseconds)<input name="directorSliceBudgetMs" type="number" min="0" max="100" required><small>Longest uninterrupted slice of a director pass before it yields to EveJS. 0 disables yielding; the pass is still measured.</small></label>
           </div></article>
           <article class="panel settings-section"><div class="panel-heading"><div><div class="eyebrow">ADD-ON DRIVER</div><h2>Cycle schedule and throughput</h2></div></div><div class="settings-grid">
             <label>Bot steps in parallel<input name="addonConcurrency" type="number" min="1" max="100" required><small>EveJS lowers active steps automatically when CPU or event-loop delay rises.</small></label>
@@ -140,6 +142,14 @@
           </div><div class="seed-monitor" aria-live="polite"><strong id="seed-state">Loading seeding status</strong><span id="seed-progress">—</span><small id="seed-last-batch">The seeder waits for two server-load samples before creating pilots.</small></div></article>
           <div class="settings-actions"><span id="settings-updated">Loading saved settings</span><button type="submit" id="save-settings">Save settings</button></div>
         </form>
+      </section>
+
+      <section class="page" id="view-performance">
+        <div class="page-heading"><div><div class="eyebrow">SERVER HEALTH</div><h1>Performance</h1><p>Separate measurements for the EveJS event loop, CPU, memory, garbage collection, scheduled work, and scene load. These are measurements of this server, not capacity guarantees.</p></div><div class="status-chip"><span class="live-dot"></span><span id="performance-state">Waiting for telemetry</span></div></div>
+        <div id="performance-alert" class="alert hidden" role="status"></div>
+        <div class="metric-grid" id="performance-metrics"></div>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">DURABLE SCHEDULER</div><h2 id="performance-queue-title">Scheduled playerbot work</h2><p id="performance-queue-note" class="panel-subtitle">The queue is scanned only while this page is open.</p></div></div><div class="table-wrap"><table><thead><tr><th>JOB TYPE</th><th class="numeric">SCHEDULED</th><th class="numeric">RUNNING</th><th class="numeric">DUE NOW</th><th class="numeric">OLDEST OVERDUE</th><th class="numeric">START DELAY P95</th><th class="numeric">START DELAY MAX</th></tr></thead><tbody id="performance-queue-rows"></tbody></table></div></article>
+        <article class="panel"><div class="panel-heading"><div><div class="eyebrow">WHERE TIME GOES</div><h2>Work by subsystem</h2><p class="panel-subtitle">Recent duration of each measured pass, slowest first. A yield is a point where a long pass handed control back to EveJS.</p></div></div><div class="table-wrap"><table><thead><tr><th>SUBSYSTEM</th><th class="numeric">RUNS</th><th class="numeric">AVERAGE</th><th class="numeric">P95</th><th class="numeric">LONGEST</th><th class="numeric">YIELDS</th><th class="numeric">LONGEST SLICE</th><th>LAST RUN</th></tr></thead><tbody id="performance-work-rows"></tbody></table></div></article>
       </section>
 
       <section class="page" id="view-killboard">
