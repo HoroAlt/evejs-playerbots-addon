@@ -229,6 +229,10 @@ function createPlayerBotPerformanceTelemetry(options = {}) {
   const backlogMinIntervalMs = Math.max(0, Math.trunc(toFiniteNumber(
     options.backlogMinIntervalMs ?? process.env.EVEJS_PLAYER_BOTS_TELEMETRY_BACKLOG_INTERVAL_MS,
     DEFAULT_BACKLOG_MIN_INTERVAL_MS)));
+  // Listing jobs runs inside the scheduler process and can take seconds on a
+  // loaded server, so the queue scan is opt-in. Start-delay statistics are
+  // always collected and need no scan.
+  const queueScanEnabled = options.queueScanEnabled ?? process.env.EVEJS_PLAYER_BOTS_TELEMETRY_QUEUE_SCAN === "1";
   const backlogWaitMs = Math.max(0, Math.trunc(toFiniteNumber(options.backlogWaitMs, DEFAULT_BACKLOG_WAIT_MS)));
   const createEventLoopMonitor = options.monitorEventLoopDelay || perfHooks.monitorEventLoopDelay;
   const cpuUsage = options.cpuUsage || ((previous) => process.cpuUsage(previous));
@@ -504,7 +508,10 @@ function createPlayerBotPerformanceTelemetry(options = {}) {
   // The queue scan crosses the scheduler process boundary, so it runs only
   // when a snapshot is requested and is cached between requests.
   async function buildQueue(scheduler) {
-    if (!scheduler || typeof scheduler.list !== "function") return { error: "scheduler not bound" };
+    if (!queueScanEnabled) {
+      return { enabled: false, note: "queue scan is off; set EVEJS_PLAYER_BOTS_TELEMETRY_QUEUE_SCAN=1 to enable it" };
+    }
+    if (!scheduler || typeof scheduler.list !== "function") return { enabled: true, error: "scheduler not bound" };
     const nowMs = now();
     let refreshing = false;
     let refreshError = "";
@@ -531,6 +538,7 @@ function createPlayerBotPerformanceTelemetry(options = {}) {
         : { refreshing: true, minimumIntervalMs: backlogMinIntervalMs, note: "first scheduler scan is still running" };
     }
     return {
+      enabled: true,
       sampledAt: new Date(backlogCache.sampledAtMs).toISOString(),
       sampleDurationMs: backlogCache.sampleDurationMs,
       cacheAgeMs: Math.max(0, now() - backlogCache.sampledAtMs),

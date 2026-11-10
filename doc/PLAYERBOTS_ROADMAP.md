@@ -2069,3 +2069,106 @@ simulation detail in systems with no human present (this release only measures
 that load), an audit of delivery receipts and loss replacement against the
 Living Universe reservation pattern, the 15,000-pilot and 5,000-online
 targets, and every live gate listed earlier in this roadmap.
+
+## Remote validation of 0.2.138 and the 0.2.139 follow-up — 10 Nov 2026
+
+**Validation of the `0.2.138` archive on the supported remote host.** All of
+this used a disposable directory with copies of the real installation; the
+real databases were only read to make consistent SQLite backups, and their
+size and modification time were unchanged afterwards.
+
+- Clean install on the original EveJS `261108.1` source: verifier reported
+  not-installed (exit 3), dry run passed, install passed, verifier reported
+  every guarded file installed (exit 0), a one-line change was reported as
+  drift (exit 1) and rollback refused to overwrite it (exit 2); after the
+  change was reverted, rollback restored a tree identical to the original and
+  the operator `.env` and game-data sentinels were intact.
+- Upgrade of a copy of the live `0.2.136` installation: the seven conflicting
+  files were confirmed byte-identical to the committed `0.2.136` overlay
+  before `--replace-conflicts` was used; verifier passed; rollback restored
+  the previous installation byte for byte.
+- Integration on a disposable server with copied GameStore and Market
+  databases, no published game ports and a new API token: all 500 pilots
+  reattached, the add-on cycle advanced with zero failed steps, the telemetry
+  endpoint and dashboard page responded, no uncaught errors were logged, and
+  both copied databases passed `PRAGMA integrity_check` after shutdown.
+
+**What the telemetry showed.** The 500-pilot server is saturated on its main
+thread, as earlier profiles suggested: main-thread CPU stayed at 85–99% of one
+core, event-loop p95 between 1.3 and 5.6 s with stalls up to 17 s, about
+1,100 playerbot jobs due at any time and jobs starting minutes late. No human
+was online, so every bot ship in space (about 320, in 31 systems, 87 in the
+largest) was simulated in a system nobody was observing. Longest measured
+work: industry cycle steps averaged 6.2 s (p95 24 s) and navigation steps
+2.5 s of wall time; a full director pass spent 3.7 s in one uninterrupted
+capacity stage and 2.4–3.4 s in candidate selection; an idle-roster pass held
+single slices of up to 15 s. Those slices are inside one pilot's work or one
+stage, where yielding between pilots cannot reach.
+
+**Director slice budget, measured.** Without a limit on waiting, yielding on
+the saturated server stretched one director pass to 193 s, because each yield
+returned seconds late; that is why a pass now stops yielding after two seconds
+parked. With that limit, two ten-minute windows on the same disposable server
+compared a budget of 8 ms with yielding disabled:
+
+| Window | Event-loop p95, median | Worst stall | Director think jobs | Navigation steps | Pilot steps | Oldest overdue job |
+| --- | --- | --- | --- | --- | --- | --- |
+| Budget 8 ms | 4.0 s | 10.9 s | 714 | 262 | 192 | 459 s |
+| Yielding off | 2.6 s (1.6 s counting two empty samples) | 17.5 s | 514 | 181 | 173 | 732 s |
+| Budget 8 ms, six-minute control | 3.6 s | 6.9 s | 405 | 124 | 110 | 544 s |
+
+More scheduled work completed and the worst stall was shorter with the budget,
+but median event-loop delay was not lower. The windows are short and the
+workload drifts, so this is not evidence that the budget reduces latency on a
+saturated server. It does not restore responsiveness; the remaining cost is
+in the uninterrupted slices listed above. The default stays at 8 ms because
+throughput was higher and the waiting limit bounds its cost; `0` restores the
+previous single-slice pass.
+
+**Production deployment of `0.2.138`.** The archive whose SHA-256 was
+verified in the tests above was installed on the live checkout after fresh
+backups of both databases and of every file changed. The verifier reported
+the already fast-forwarded checkout identical to the archive before and after
+installation, and Git showed no modified tracked file, so the installed
+archive, the published commit and the tested archive are the same. The
+service unit, control command and panel entry now start EveJS with the
+add-on's Compose override, which is how the containers had been started by
+hand; the resolved playerbot environment was compared with the previous
+containers and differed only by the three new variables. After start through
+the existing control command: Market, EveJS and the add-on healthy with no
+restarts, 500 of 500 pilots online, 500 with active work, 319 in space, six
+specialist corporations and five structures present, both live databases
+passing a read-only `PRAGMA quick_check`, and unrelated containers unchanged.
+Event-loop p95 in the first ten minutes after start was 4.6–5.0 s; the server
+remains overloaded at this roster size.
+
+**Finding that led to `0.2.139`.** Listing jobs inside the scheduler process
+took about 15 s on the saturated server and timed out other scheduler
+requests. The telemetry queue scan sent such a listing whenever the
+Performance page was open. `0.2.139` turns that scan off by default
+(`EVEJS_PLAYER_BOTS_TELEMETRY_QUEUE_SCAN=1` enables it); how late jobs start is
+still measured continuously without any listing. The same slow listing
+affects existing callers that look up a pilot's jobs, which is recorded here
+as an open performance item, not fixed in this release.
+
+| Gate | Implemented | Focused tests | In ZIP for EveJS 261108.1 | Live behaviour proven |
+| --- | --- | --- | --- | --- |
+| Subsystem telemetry | yes | yes | yes | endpoint and page served live data on the production server |
+| Director slice budget | yes | yes | yes | passes yield and stop yielding when saturated; no latency improvement shown |
+| Patrol rotation | yes | yes | yes | no piracy patrol started during the test or deployment window |
+| Installation verifier | yes | install/rollback matrix | yes | passed on the production checkout |
+
+Open: reduce the uninterrupted slices named above (industry cycle step,
+capacity stage, candidate selection); the scheduler's slow job listing; the
+burst of overdue jobs after every restart; a decision on reduced simulation
+detail for systems with no human present; the delivery-receipt and
+loss-replacement audit; live proof of patrol rotation; and every earlier live
+gate in this roadmap. The roster-size targets above 500 remain unvalidated and
+this evidence argues against raising the roster on this host.
+
+The complete isolated suite passed again on the remote host for `0.2.139`
+before its archive was built: 115 test files, 417 tests, no failures. The
+install, upgrade and rollback matrix was repeated with the `0.2.139` archive.
+A second disposable server was not started for `0.2.139` because the live
+server was running and the host had too little free memory for both; the only
+runtime change from `0.2.138` is the default-off queue scan.

@@ -647,7 +647,7 @@ read-only and adds no host port.
 | Event loop | Delay in the last five-second sample (mean, p50, p95, p99, longest) and across the last ten minutes. |
 | CPU | EveJS process CPU, its main thread alone, the remainder on other threads, and how busy the host is. Percentages are of one CPU core. |
 | Memory and garbage collection | Resident memory, heap against its limit, and the duration of recent collections. |
-| Scheduler | Playerbot jobs scheduled, running and due, the oldest overdue job, and how late jobs start. |
+| Scheduler | How late playerbot jobs start and how many dispatch slots are in use; optionally the number scheduled, running and due. |
 | Subsystem work | Duration of director passes and their stages, per-pilot autonomy steps, scheduled jobs by type, and the dashboard summary. |
 | Scene load | Bot ships in space, the systems they occupy, and how many are in systems with no human pilot in space. |
 
@@ -672,12 +672,16 @@ Do not raise the load-guard or seeding thresholds to make the page look
 healthy. These numbers describe this server under its current load; they are
 not a capacity guarantee for other hardware.
 
-The scheduler queue is scanned only when the page or endpoint is read, and the
-result is reused for 60 seconds (`EVEJS_PLAYER_BOTS_TELEMETRY_BACKLOG_INTERVAL_MS`).
-On a loaded server that scan can be slow, so a request waits at most 1.5
-seconds for it and otherwise shows the previous scan. Subsystem durations
-include time spent waiting on the market or scheduler process; that wait is
-reported separately and is not part of any held slice.
+How late scheduled jobs start is always measured and costs nothing extra.
+Counting scheduled, running and due jobs requires listing them inside the
+scheduler process, which took about 15 seconds on a saturated 500-pilot test
+server and delayed other scheduler requests. That queue scan is therefore off
+by default. Set `EVEJS_PLAYER_BOTS_TELEMETRY_QUEUE_SCAN=1` and restart `server`
+to enable it; it then runs only when the page or endpoint is read, is reused
+for 60 seconds (`EVEJS_PLAYER_BOTS_TELEMETRY_BACKLOG_INTERVAL_MS`), and a
+request waits at most 1.5 seconds for it. Subsystem durations include time
+spent waiting on the market or scheduler process; that wait is reported
+separately and is not part of any held slice.
 Set `EVEJS_PLAYER_BOTS_TELEMETRY_FILE=1` to also write a snapshot every minute
 to `runtime-performance/playerbots-latest.json` under the EveJS data root.
 Keep that file out of public source control.

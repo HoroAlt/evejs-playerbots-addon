@@ -491,14 +491,15 @@ function renderPerformance(data) {
   const scheduler = data.scheduler || {};
   const queue = scheduler.queue || {};
   const lateness = scheduler.lateness || {};
+  const scanned = Boolean(queue.byType);
   const types = [...new Set([...Object.keys(queue.byType || {}), ...Object.keys(lateness)])].sort();
   $("performance-queue-rows").innerHTML = types.map((type) => {
     const row = (queue.byType || {})[type] || {};
     const late = lateness[type] || {};
-    return `<tr><td class="mono">${escapeHTML(type)}</td><td class="numeric">${number(row.scheduled)}</td><td class="numeric">${number(row.running)}</td><td class="numeric">${number(row.due)}</td><td class="numeric">${escapeHTML(row.due ? milliseconds(row.oldestOverdueMs) : "—")}</td><td class="numeric">${escapeHTML(late.samples ? milliseconds(late.p95Ms) : "—")}</td><td class="numeric">${escapeHTML(late.samples ? milliseconds(late.maximumMs) : "—")}</td></tr>`;
-  }).join("") || `<tr><td colspan="7" class="empty">${escapeHTML(queue.error ? `Scheduler queue unavailable: ${queue.error}` : "No scheduled playerbot work was reported.")}</td></tr>`;
+    return `<tr><td class="mono">${escapeHTML(type)}</td><td class="numeric">${scanned ? number(row.scheduled) : "—"}</td><td class="numeric">${scanned ? number(row.running) : "—"}</td><td class="numeric">${scanned ? number(row.due) : "—"}</td><td class="numeric">${escapeHTML(row.due ? milliseconds(row.oldestOverdueMs) : "—")}</td><td class="numeric">${escapeHTML(late.samples ? milliseconds(late.p95Ms) : "—")}</td><td class="numeric">${escapeHTML(late.samples ? milliseconds(late.maximumMs) : "—")}</td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="empty">${escapeHTML(queue.error ? `Scheduler queue unavailable: ${queue.error}` : "No scheduled playerbot work has started since EveJS started.")}</td></tr>`;
   const dispatch = scheduler.dispatch;
-  $("performance-queue-note").textContent = `${dispatch ? `${number(dispatch.active)} of ${number(dispatch.maxConcurrent)} dispatch slots in use, ${number(dispatch.queued)} waiting · ` : ""}Bot steps in parallel: ${number(guard.effectiveStepConcurrency)} of ${number(guard.configuredStepConcurrency)} configured${queue.sampleDurationMs !== undefined ? ` · queue scan took ${milliseconds(queue.sampleDurationMs)}` : ""}${queue.refreshing ? " · a new scan is still running; the previous one is shown" : ""}`;
+  $("performance-queue-note").textContent = `${dispatch ? `${number(dispatch.active)} of ${number(dispatch.maxConcurrent)} dispatch slots in use, ${number(dispatch.queued)} waiting · ` : ""}Bot steps in parallel: ${number(guard.effectiveStepConcurrency)} of ${number(guard.configuredStepConcurrency)} configured${queue.sampleDurationMs !== undefined ? ` · queue scan took ${milliseconds(queue.sampleDurationMs)}` : ""}${queue.refreshing ? " · a new scan is still running; the previous one is shown" : ""}${queue.enabled === false ? " · queue counts are off (start delay is always measured)" : ""}`;
 
   const work = Object.entries(data.work || {})
     .sort((left, right) => Number(right[1].p95Ms || 0) - Number(left[1].p95Ms || 0))
