@@ -26,8 +26,19 @@ function queueAchievementCareerSync(characterID) {
       const currentID = charactersToSync[index++];
       setImmediate(() => {
         try {
-          const result = require("../../../services/career/careerProgress").syncAchievementProgress(currentID);
-          if (!result.success) require("../../../utils/logger").warn(`[Career] native progress awaits retry: ${result.errorMsg}`);
+          const careerProgress = require("../../../services/career/careerProgress");
+          // Version guard: some EveJS releases expose syncAchievementProgress,
+          // others only sync(). Resolve once per call, skip silently if absent.
+          const syncProgress =
+            typeof careerProgress.syncAchievementProgress === "function"
+              ? careerProgress.syncAchievementProgress
+              : typeof careerProgress.sync === "function"
+                ? careerProgress.sync
+                : null;
+          if (syncProgress) {
+            const result = syncProgress(currentID);
+            if (!result.success) require("../../../utils/logger").warn(`[Career] native progress awaits retry: ${result.errorMsg}`);
+          }
         } catch (error) {
           require("../../../utils/logger").warn(`[Career] native progress awaits retry: ${error.message}`);
         }
