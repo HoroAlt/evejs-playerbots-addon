@@ -3,7 +3,7 @@
 ## Shared rules
 
 - Keep 500 bots as the fresh-install starting target. The current public test
-  is capped at 1,500 persistent and 1,500 online bots; the long-term hard
+  is capped at 1,500 persistent and 300 online bots by default; the long-term hard
   limits remain 15,000 persistent and 5,000 online. Connection groups rotate
   on fixed eight-hour windows; validate larger rosters in stages.
 - Keep six specialist corporations: trade, industry, planetary, security,
@@ -2002,10 +2002,10 @@ matching wallet, market, and inventory evidence.
 Add-on `0.2.137` changes the fresh-install roster target to 500. Existing
 installations retain their saved target and environment settings.
 
-## Telemetry, main-thread cost removal, patrol rotation and unobserved systems — add-on 0.2.141, 11 Nov 2026
+## Telemetry, main-thread cost removal, patrol rotation and unobserved systems — add-on 0.2.142, 11 Nov 2026
 
-Add-on `0.2.141` is the single current release. It replaces the `0.2.138`,
-`0.2.139` and `0.2.140` test builds of 10–11 Nov 2026 and contains all of
+Add-on `0.2.142` is the single current release. It replaces the `0.2.138`,
+`0.2.139`, `0.2.140` and `0.2.141` test builds of 10–11 Nov 2026 and contains all of
 their work. It adapts
 four patterns from the Living Universe patch while keeping playerbots as
 persistent EveJS characters with sessions, wallets, corporations and
@@ -2064,9 +2064,12 @@ operations that go through the EveJS game authorities.
   (AGPL-3.0, as EveJS and this add-on). Living Universe's background worker
   for route planning was reviewed and not adopted: the profiles above show no
   pure computation in playerbot work large enough to move to another thread.
-- **Default per-system limit.** The default number of autonomous bots per
-  solar system is 50 (it was 300); the hard maximum stays 300 and a value
-  saved by the operator is kept.
+- **Default limits.** At most 300 bots are online at once by default (it was
+  1,500) and 30 autonomous bots per solar system (it was 300). The roster
+  target is unchanged; bots above the online limit take turns through the
+  connection rotation. The hard maxima stay 5,000 online and 300 per system,
+  and values saved by the operator are kept. With 500 bots online the live
+  space tick ran about 1.3 times a second instead of ten.
 
 Not adopted from Living Universe: session-less virtual pilots, fixed
 pirate/police hostility, scripted campaigns, encounter timers, doctrine
@@ -2162,7 +2165,7 @@ the process between charge and effect for each flow.
 | Installation verifier | yes | install/rollback matrix | yes | passed on the production checkout |
 | Unobserved-system cadence | yes | yes | yes | counters show passes skipped on the disposable server; never exercised with a human entering a system |
 | Main-thread cost removal | yes | yes | yes | two to three times the completed work on the disposable server; server still overloaded |
-| Per-system default of 50 | yes | yes | yes | not applicable |
+| Defaults of 300 online and 30 per system | yes | yes | yes | not applicable |
 | Deadline tick timer and stall watch | yes | yes | yes | recorded in the handoff |
 
 Install, rollback and production results for the archive are recorded in the

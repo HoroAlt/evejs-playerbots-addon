@@ -43,11 +43,11 @@ installation never resets, moves, or reseeds them.
 
 ## Install from the release ZIP
 
-Extract `evejs-playerbots-addon-v0.2.141.zip`. In a terminal, pass the EveJS
+Extract `evejs-playerbots-addon-v0.2.142.zip`. In a terminal, pass the EveJS
 source directory as the single positional argument:
 
 ```sh
-cd EveJS-Playerbots-Addon-v0.2.141
+cd EveJS-Playerbots-Addon-v0.2.142
 EVEJS_SOURCE="/path/to/your EveJS checkout"
 ./install.sh "$EVEJS_SOURCE"
 ```
@@ -153,7 +153,8 @@ on an orderly container stop. The same overlay sets the optional
 explicitly sets it for a human-CEO corporation war test. It supplies these
 population defaults when the corresponding `.env` variables are absent: roster
 target 1,000, gradual seeding
-enabled, roster ceiling 1,500, online limit 1,500, and an eight-hour connection
+enabled, roster ceiling 1,500, online limit 300, 30 autonomous bots per solar
+system, and an eight-hour connection
 rotation. The code hard limits are 15,000 persistent pilots and 5,000 online
 sessions. Existing `.env` values and saved dashboard settings take precedence.
 

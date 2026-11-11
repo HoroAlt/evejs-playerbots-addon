@@ -51,7 +51,7 @@ The last live roster measurement was 1,339 managed bots across 12 corporations.
 The remote public test is explicitly configured with a target, roster ceiling,
 and online limit of 1,500. A fresh add-on installation defaults to a 500-bot
 target and gradually seeds that roster in bounded batches. Its default ceiling
-and online limit are 1,500. Connection groups rotate over the configured window,
+is 1,500 and at most 300 bots are online at once. Connection groups rotate over the configured window,
 with active work and bots in human-controlled corporations or fleets receiving
 priority within the online limit. The code hard limits are 15,000 persistent
 pilots and 5,000 online sessions; those larger limits have not been validated
@@ -79,7 +79,7 @@ bounded batch at a time, yields between pilots, and waits between batches:
 ```dotenv
 EVEJS_PLAYER_BOTS_ROSTER_CEILING=1500
 EVEJS_PLAYER_BOTS_TARGET=500
-EVEJS_PLAYER_BOTS_MAX_ONLINE=1500
+EVEJS_PLAYER_BOTS_MAX_ONLINE=300
 EVEJS_PLAYER_BOTS_ROSTER_SEED_ENABLED=1
 EVEJS_PLAYER_BOTS_CONNECTION_WINDOW_MS=28800000
 ```
@@ -114,7 +114,7 @@ enforces the configured online cap (hard maximum 5,000) and rotation window.
 `EVEJS_PLAYER_BOTS_ADDON_CONCURRENCY` controls parallel work steps
 (default 16); `EVEJS_PLAYER_BOTS_MAX_CONCURRENT_WORK` controls active durable
 work (default 100); `EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM` sets the normal
-autonomous system limit (default 50, at most 300). These settings do not change the roster
+autonomous system limit (default 30, at most 300). These settings do not change the roster
 size. The server clamps active add-on steps as load rises: four above 50 ms
 event-loop p95 or 70% CPU, two above 100 ms or 85% CPU, and one above 250 ms
 or 95% CPU. The add-on logs the current effective limit. Bots may enter a full

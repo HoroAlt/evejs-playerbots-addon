@@ -13,7 +13,7 @@ not earned revenue, and is tracked in the SQLite-backed `playerBots` table.
 ## Population limits
 
 - Fresh-install target: 500 bots, gradually seeded by the separate add-on.
-- Public-test roster ceiling and online limit: 1,500 each by default.
+- Public-test roster ceiling: 1,500 by default; online limit: 300 by default.
 - Code hard limits: 15,000 persistent bots and 5,000 online sessions.
 - Six specialist corporations: trade, industry, planetary, security, piracy,
   and sovereignty.
@@ -48,7 +48,7 @@ slots open; idle bots do not occupy a space scene. Up to 100 additional mobility
 slots let over-capacity bots relocate even when ordinary work slots are full.
 Set
 `EVEJS_PLAYER_BOTS_MAX_CONCURRENT_WORK` (1–5,000) or
-`EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM` (1–300, default 50) to change those limits. Bots in the
+`EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM` (1–300, default 30) to change those limits. Bots in the
 same fleet as a connected human are treated as human-controlled and do not use
 the per-system allowance or autonomous work slots. Human player corporations
 reserve enough work slots to keep at least three bots productive while a member

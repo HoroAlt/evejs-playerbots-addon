@@ -581,7 +581,7 @@ Add or edit these values in `.env` before starting `server`:
 ```dotenv
 EVEJS_PLAYER_BOTS_TARGET=500
 EVEJS_PLAYER_BOTS_ROSTER_CEILING=1500
-EVEJS_PLAYER_BOTS_MAX_ONLINE=1500
+EVEJS_PLAYER_BOTS_MAX_ONLINE=300
 EVEJS_PLAYER_BOTS_ROSTER_SEED_ENABLED=1
 EVEJS_PLAYER_BOTS_CONNECTION_WINDOW_MS=28800000
 EVEJS_PLAYER_BOTS_ADDON_MODE=auto
@@ -591,14 +591,19 @@ EVEJS_PLAYER_BOTS_ADDON_BOT_DELAY_MS=0
 EVEJS_PLAYER_BOTS_ADDON_REQUEST_TIMEOUT_MS=120000
 EVEJS_SCHEDULER_MAX_CONCURRENT_DISPATCH=24
 EVEJS_PLAYER_BOTS_MAX_CONCURRENT_WORK=1500
-EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM=50
+EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM=30
 EVEJS_PLAYER_BOTS_DIRECTOR_THINK_MIN_MS=90000
 EVEJS_PLAYER_BOTS_DIRECTOR_THINK_MAX_MS=210000
 EVEJS_PLAYER_BOTS_DIRECTOR_INITIAL_SPREAD_MS=90000
 ```
 
 Fresh installations default to a roster target of 500, a roster ceiling of
-1,500, an online limit of 1,500, and gradual seeding enabled. The remote clean
+1,500, an online limit of 300, 30 autonomous bots per solar system, and
+gradual seeding enabled. Bots above the online limit stay in the roster and
+take turns through the connection rotation. On a four-core host with 500 bots
+online the space tick ran about once a second instead of ten times, so the
+online default is 300; raise it only while the Performance page stays
+healthy. The remote clean
 test targets 500 persistent bots. Its online cap is staged during roster creation,
 then raised to 500 for simultaneous-session validation.
 The active-work ceiling defaults to 5,000, matching the online hard maximum, so

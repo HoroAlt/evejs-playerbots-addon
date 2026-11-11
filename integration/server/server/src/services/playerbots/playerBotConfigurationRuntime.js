@@ -7,7 +7,8 @@ const PATH = "/_dashboardSettings";
 const MAX_ROSTER = 15_000;
 const MAX_ONLINE = 5_000;
 const MAX_PER_SYSTEM = 300;
-const DEFAULT_PER_SYSTEM = 50;
+const DEFAULT_PER_SYSTEM = 30;
+const DEFAULT_ONLINE = 300;
 const ROSTER_SEED_SAFETY_LIMITS = Object.freeze({
   batchSize: 10,
   eventLoopP95Ms: 250,
@@ -23,7 +24,7 @@ function envInteger(name, fallback, minimum, maximum) {
 
 function defaults() {
   const rosterTarget = envInteger("EVEJS_PLAYER_BOTS_TARGET", 500, 30, MAX_ROSTER);
-  const maxOnline = envInteger("EVEJS_PLAYER_BOTS_MAX_ONLINE", MAX_ONLINE, 1, MAX_ONLINE);
+  const maxOnline = envInteger("EVEJS_PLAYER_BOTS_MAX_ONLINE", DEFAULT_ONLINE, 1, MAX_ONLINE);
   return {
     rosterTarget,
     rosterCeiling: envInteger("EVEJS_PLAYER_BOTS_ROSTER_CEILING", MAX_ROSTER, 30, MAX_ROSTER),
