@@ -649,6 +649,7 @@ read-only and adds no host port.
 | Memory and garbage collection | Resident memory, heap against its limit, and the duration of recent collections. |
 | Scheduler | How late playerbot jobs start and how many dispatch slots are in use; optionally the number scheduled, running and due. |
 | Subsystem work | Duration of director passes and their stages, per-pilot autonomy steps, scheduled jobs by type, and the dashboard summary. |
+| Space tick | The tick timer in use, slots skipped after late ticks, and each tick that held the server for a second or longer with its slowest systems. |
 | Scene load | Bot ships in space, the systems they occupy, how many are in systems with no human pilot in space, and the site-upkeep cadence used there. |
 
 The event-loop state uses the same boundaries as the add-on's load guard:
@@ -704,6 +705,24 @@ Set `EVEJS_PLAYER_BOTS_UNOBSERVED_SITE_TICK_MS` to another interval between
 `1001` and `60000`, or to `0` to run every system at the normal cadence, and
 restart `server`. The Performance page shows the interval in use and how many
 upkeep passes were skipped.
+
+## Space tick timing and long ticks
+
+The 100 ms space tick runs on a fixed deadline grid. A tick that wakes late
+does not move the following deadlines, slots that pass while a tick is still
+running are skipped and never replayed, and after a very late tick the next
+one starts at least 50 ms later. This only changes when ticks are dispatched;
+gameplay still reads the real clock. Set `EVEJS_SPACE_TICK_SCHEDULER=interval`
+and restart `server` to return to EveJS's plain interval timer.
+
+Every space tick that holds the server for one second or longer is recorded
+with its duration, how late it started, and the five solar systems that took
+the most time, with their entity, bot and human counts. **Long space ticks**
+on the Performance page lists the last twenty and the totals since start, and
+EveJS logs at most one warning a minute. Time outside any one system is
+structure upkeep, hazard recovery and system collection. Change the threshold
+with `EVEJS_PLAYER_BOTS_TICK_STALL_MS` (at least `100`) or switch the watch
+off with `EVEJS_PLAYER_BOTS_TICK_STALL_WATCH=0`.
 
 ## Director slice budget
 

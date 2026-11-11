@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = "0.2.140"
+VERSION = "0.2.141"
 EVEJS_VERSION = "261108.1"
 PACKAGE_NAME = f"EveJS-Playerbots-Addon-v{VERSION}"
 OUTPUT = ROOT / "dist" / f"evejs-playerbots-addon-v{VERSION}.zip"

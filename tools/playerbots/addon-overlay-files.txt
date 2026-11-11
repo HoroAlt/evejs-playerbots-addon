@@ -48,6 +48,7 @@ server/src/services/structure/structureState.js
 server/src/space/combat/killmailTracker.js
 server/src/space/modules/entosisLinkRuntime.js
 server/src/space/runtime.js
+server/src/space/runtimeTickScheduler.js
 server/src/space/runtime/playerBotThreatDamageHook.js
 server/src/space/runtime/scene/pilotCommands.js
 server/src/space/runtime/scene/tick.js

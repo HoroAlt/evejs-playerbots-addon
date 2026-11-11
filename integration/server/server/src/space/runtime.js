@@ -1052,10 +1052,17 @@ class SpaceRuntime {
     }
     pruneExpiredSpaceItems(Date.now());
     warmSimulationInventoryProjection();
-    this._tickHandle = setInterval(() => this.tick(), this._tickIntervalMs);
-    if (this._tickHandle && typeof this._tickHandle.unref === "function") {
-      this._tickHandle.unref();
-    }
+    // Playerbots add-on: a deadline grid instead of a plain interval, so a
+    // late or stalled tick is not followed by closely clustered ticks.
+    // EVEJS_SPACE_TICK_SCHEDULER=interval restores the interval timer.
+    const tickScheduler = require("./runtimeTickScheduler");
+    this._tickHandle = tickScheduler.createTickScheduler({
+      intervalMs: this._tickIntervalMs,
+      mode: tickScheduler.configuredMode(),
+      onTick: () => this.tick(),
+      onError: (error) => log.error(`[SpaceRuntime] Tick failed: ${error.stack || error.message}`),
+    }).unref().start();
+    require("../services/playerbots/playerBotTickStallWatch").getTickStallWatch().attachScheduler(this._tickHandle);
   }
 
 }

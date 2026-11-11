@@ -75,3 +75,12 @@ CCP Games or any upstream server project. EVE Online and related trademarks
 belong to CCP Games. All other third-party names and marks belong to their
 respective owners.
 ```
+
+### Living Universe server tree (AGPL-3.0)
+
+The deadline arithmetic in `server/src/space/runtimeTickScheduler.js` and the
+design of `playerBotTickStallWatch.js` are adapted from
+`runtimeTickScheduler.js` and `tickStallWatch.js` in the Living Universe
+server tree. That tree is licensed under the GNU Affero General Public
+License version 3, the same license as EveJS and this add-on (see `LICENSE`).
+Both files name their origin in their headers.

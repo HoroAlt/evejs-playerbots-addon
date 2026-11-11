@@ -670,6 +670,7 @@ function createPlayerBotPerformanceTelemetry(options = {}) {
       },
       work: guarded(buildWork),
       scene: guarded(() => buildScene(context.playerBots)),
+      spaceTick: guarded(() => require("./playerBotTickStallWatch").getTickStallWatch().getSnapshot()),
       capture: {
         sampleIntervalMs,
         started,

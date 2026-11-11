@@ -131,6 +131,12 @@ tick(wallclockNowMs) {
       collectedSceneCount: collectionSummary.collectedSystemIDs.length,
     };
     this._lastTickSummary = tickSummary;
+    try {
+      require("../../../services/playerbots/playerBotTickStallWatch").getTickStallWatch()
+        .recordRuntimeTick({ ...tickSummary, wallclockNowMs: now }, this.scenes.values());
+    } catch (error) {
+      log.warn(`[SpaceRuntime] Tick stall watch failed: ${error.message}`);
+    }
     if (!Array.isArray(this._recentTickSummaries)) this._recentTickSummaries = [];
     this._recentTickSummaries.push(tickSummary);
     if (this._recentTickSummaries.length > 120) this._recentTickSummaries.shift();
@@ -157,7 +163,8 @@ stopTicking() {
     const tickHandle = this._tickHandle;
     this._tickHandle = null;
     if (tickHandle !== null && tickHandle !== undefined) {
-      clearInterval(tickHandle);
+      if (typeof tickHandle.stop === "function") tickHandle.stop();
+      else clearInterval(tickHandle);
     }
     return { stopped: true };
   },

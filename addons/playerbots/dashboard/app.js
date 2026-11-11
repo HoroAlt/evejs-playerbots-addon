@@ -506,6 +506,14 @@ function renderPerformance(data) {
     .slice(0, 25);
   $("performance-work-rows").innerHTML = work.map(([name, row]) => `<tr><td class="mono">${escapeHTML(name)}</td><td class="numeric">${number(row.samples)}</td><td class="numeric">${escapeHTML(milliseconds(row.averageMs))}</td><td class="numeric">${escapeHTML(milliseconds(row.p95Ms))}</td><td class="numeric">${escapeHTML(milliseconds(row.maximumMs))}</td><td class="numeric">${number(row.yields)}</td><td class="numeric">${escapeHTML(row.maximumSliceMs ? milliseconds(row.maximumSliceMs) : "—")}</td><td>${escapeHTML(row.lastAt ? new Date(row.lastAt).toLocaleTimeString() : "—")}</td></tr>`).join("") ||
     `<tr><td colspan="8" class="empty">No playerbot pass has been measured since EveJS started.</td></tr>`;
+
+  const tick = data.spaceTick || {};
+  const tickScheduler = tick.scheduler || {};
+  $("performance-tick-note").textContent = tick.enabled === false
+    ? "The stall watch is switched off."
+    : `${number(tick.stalls)} of ${number(tick.ticks)} space ticks since EveJS started held the server for ${milliseconds(tick.thresholdMs)} or longer (${milliseconds(tick.stallMs)} in total, longest ${milliseconds(tick.longestMs)}). Tick timer: ${tickScheduler.mode || "unknown"}${tickScheduler.mode === "deadline" ? `, ${number(tickScheduler.missedPeriods)} slots skipped after late ticks` : ""}.`;
+  $("performance-tick-rows").innerHTML = (tick.recent || []).map((row) => `<tr><td>${escapeHTML(String(row.at || "").slice(11, 19))}</td><td class="numeric">${escapeHTML(milliseconds(row.durationMs))}</td><td class="numeric">${escapeHTML(milliseconds(row.startedLateMs))}</td><td class="numeric">${number(row.scenesTicked)}</td><td class="numeric">${escapeHTML(milliseconds(row.outsideScenesMs))}</td><td class="mono">${escapeHTML((row.slowestScenes || []).map((scene) => `${scene.solarSystemID}: ${milliseconds(scene.workMs)} (${number(scene.botSessions)} bots, ${number(scene.humanSessions)} humans)`).join(" · "))}</td></tr>`).join("") ||
+    `<tr><td colspan="6" class="empty">No long space tick has been recorded since EveJS started.</td></tr>`;
 }
 
 // Telemetry is requested only while the Performance page is open.

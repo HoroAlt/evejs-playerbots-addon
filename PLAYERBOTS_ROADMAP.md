@@ -2002,10 +2002,11 @@ matching wallet, market, and inventory evidence.
 Add-on `0.2.137` changes the fresh-install roster target to 500. Existing
 installations retain their saved target and environment settings.
 
-## Telemetry, main-thread cost removal, patrol rotation and unobserved systems — add-on 0.2.140, 11 Nov 2026
+## Telemetry, main-thread cost removal, patrol rotation and unobserved systems — add-on 0.2.141, 11 Nov 2026
 
-Add-on `0.2.140` is the single current release. It replaces the `0.2.138` and
-`0.2.139` test builds of 10 Nov 2026 and contains all of their work. It adapts
+Add-on `0.2.141` is the single current release. It replaces the `0.2.138`,
+`0.2.139` and `0.2.140` test builds of 10–11 Nov 2026 and contains all of
+their work. It adapts
 four patterns from the Living Universe patch while keeping playerbots as
 persistent EveJS characters with sessions, wallets, corporations and
 operations that go through the EveJS game authorities.
@@ -2052,6 +2053,17 @@ operations that go through the EveJS game authorities.
   Repeated hits from one pirate NPC are assessed once every three seconds per
   pilot instead of once per hit. Site spawn checks share one template copy per
   call instead of three per encounter plan.
+- **Space tick timing and stall watch (new in `0.2.141`).** The 100 ms space
+  tick runs on a fixed deadline grid instead of a plain interval timer: a late
+  wake does not shift later deadlines, slots that elapse during a long tick
+  are skipped and never replayed, and a tick never starts less than 50 ms
+  after a very late one (`EVEJS_SPACE_TICK_SCHEDULER=interval` restores the
+  interval timer). Every space tick that holds the server for a second or
+  longer is recorded with the solar systems it spent the time in and shown on
+  the Performance page. Both are adapted from the Living Universe server tree
+  (AGPL-3.0, as EveJS and this add-on). Living Universe's background worker
+  for route planning was reviewed and not adopted: the profiles above show no
+  pure computation in playerbot work large enough to move to another thread.
 - **Default per-system limit.** The default number of autonomous bots per
   solar system is 50 (it was 300); the hard maximum stays 300 and a value
   saved by the operator is kept.
@@ -2093,7 +2105,7 @@ late scheduled work started at the end of the window.
 | Build | Director think jobs | Industry steps | Navigation steps | Pilot steps | Start delay | Event-loop p95, median | Main thread |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Before (10 Nov build, 10 min) | 71 | 64 | 26 | 19 | 7–8 min | 4.0 s | 85–98% |
-| `0.2.140` (21 min) | 139 | 139 | 49 | 56 | about 4 min | 3.1 s | 58–98% |
+| `0.2.140` build (21 min) | 139 | 139 | 49 | 56 | about 4 min | 3.1 s | 58–98% |
 
 The profit-share pass fell from 43–65 s to 12–17 s per cycle. In the final
 profile site upkeep was 12% of main-thread CPU, the gameplay tick 25%,
@@ -2151,6 +2163,7 @@ the process between charge and effect for each flow.
 | Unobserved-system cadence | yes | yes | yes | counters show passes skipped on the disposable server; never exercised with a human entering a system |
 | Main-thread cost removal | yes | yes | yes | two to three times the completed work on the disposable server; server still overloaded |
 | Per-system default of 50 | yes | yes | yes | not applicable |
+| Deadline tick timer and stall watch | yes | yes | yes | recorded in the handoff |
 
 Install, rollback and production results for the archive are recorded in the
 11 Nov 2026 handoff, because they are measured after the archive is built.
