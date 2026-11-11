@@ -584,6 +584,65 @@ async function handleIndustryCycleJob(job = {}) {
   return { processed: true, delayMs, staggerMs };
 }
 
+
+// Role training hook: queue the skills the pilot's target hull needs, through
+// the same durable planner the war mobilization uses. Runs at most once per
+// pilot per cooldown window so a busy roster cannot spam skillbook purchases.
+// The first attempt is offset by pilot ID: without it a restart makes every
+// pilot buy skillbooks at once, which stalls the event loop for seconds.
+const SKILL_TRAINING_COOLDOWN_MS = 30 * 60 * 1000;
+// characterID -> earliest ms at which this pilot may train again.
+const skillTrainingNextAt = new Map();
+
+function skillTrainingRoleFor(bot) {
+  const specialty = String(bot && bot.specialty || "");
+  if (specialty === "security" || specialty === "piracy" || specialty === "sovereignty") {
+    return specialty;
+  }
+  // Industry, planetary and trade pilots climb the mining hull ladder.
+  return "mining";
+}
+
+async function ensureBotSkillTraining(bot) {
+  const characterID = Math.trunc(Number(bot && bot.characterID) || 0);
+  if (!characterID || !bot || bot.status === "paused" || bot.autonomyPaused === true) return null;
+  const role = skillTrainingRoleFor(bot);
+  const warRuntime = require("./playerBotWarMobilizationRuntime");
+  // War mobilization already owns this pilot's training queue.
+  try {
+    if (typeof warRuntime.getActiveWarCombatAssignment === "function" &&
+        warRuntime.getActiveWarCombatAssignment(bot)) return null;
+  } catch (_) {
+    // Missing war state must not block ordinary training.
+  }
+  const nowMs = Date.now();
+  let nextAtMs = Number(skillTrainingNextAt.get(characterID)) || 0;
+  if (!nextAtMs) {
+    // First sighting after a restart: wait a pilot-specific slice of the
+    // cooldown window so 500 skillbook purchases never land in one minute.
+    nextAtMs = nowMs + (characterID % 30) * 60 * 1000;
+    skillTrainingNextAt.set(characterID, nextAtMs);
+  }
+  if (nowMs < nextAtMs) return null;
+  skillTrainingNextAt.set(characterID, nowMs + SKILL_TRAINING_COOLDOWN_MS);
+  try {
+    const result = await warRuntime.queueRoleTraining(bot, role);
+    if (result && result.queued === true) {
+      require("../../utils/logger").info(
+        `[PlayerBots] Skill training queued char=${characterID} role=${role} hull=${result.targetHull || "?"} ` +
+          `skills=${(result.requiredSkills || []).length} endsAt=${result.queueEndTime || "unknown"}`,
+      );
+    }
+    return result;
+  } catch (error) {
+    require("../../utils/logger").warn(
+      `[PlayerBots] Skill training failed char=${characterID} role=${role}: ` +
+        `${String(error && error.message || error).slice(0, 180)}`,
+    );
+    return null;
+  }
+}
+
 async function handleDirectorThinkJob(job = {}) {
   const characterID = Math.trunc(Number(job && job.payload && job.payload.characterID) || 0);
   const sequence = Math.max(0, Math.trunc(Number(job && job.payload && job.payload.sequence) || 0));
@@ -614,6 +673,7 @@ async function handleDirectorThinkJob(job = {}) {
       );
     }
     await ensureActiveBotStep(characterID);
+    await ensureBotSkillTraining(bot);
   } catch (error) {
     require("../../utils/logger").warn(
       `[PlayerBots] Independent director think failed char=${characterID} sequence=${sequence}: ` +

@@ -331,7 +331,7 @@ function formatWarTrainingError(error, stage = "unknown") {
   return `WAR_TRAINING_${String(stage || "unknown").toUpperCase()}:${detail}`.slice(0, 180);
 }
 
-async function queueWarCombatTraining(bot) {
+async function queueWarCombatTraining(bot, requirementsOverride = null) {
   const operations = require("./playerBotOperationRuntime");
   const skillQueue = require("../skills/training/skillQueueRuntime");
   const skillState = require("../skills/skillState");
@@ -339,12 +339,18 @@ async function queueWarCombatTraining(bot) {
   const characterID = positiveID(bot && bot.characterID);
   let stage = "fit-requirements";
   try {
-    const requirementsByRung = WAR_COMBAT_TRAINING_HULL_TYPE_IDS.map((hullTypeID) =>
-      operations.getShipRungSkillRequirements("security", hullTypeID));
-    if (!characterID || requirementsByRung.some((requirements) => !requirements.length)) {
-      throw new Error("WAR_COMBAT_FIT_REQUIREMENTS_UNAVAILABLE");
+    let requirements;
+    if (Array.isArray(requirementsOverride) && requirementsOverride.length) {
+      if (!characterID) throw new Error("TRAINING_CHARACTER_ID_REQUIRED");
+      requirements = requirementsOverride;
+    } else {
+      const requirementsByRung = WAR_COMBAT_TRAINING_HULL_TYPE_IDS.map((hullTypeID) =>
+        operations.getShipRungSkillRequirements("security", hullTypeID));
+      if (!characterID || requirementsByRung.some((requirements) => !requirements.length)) {
+        throw new Error("WAR_COMBAT_FIT_REQUIREMENTS_UNAVAILABLE");
+      }
+      requirements = requirementsByRung.flat();
     }
-    const requirements = requirementsByRung.flat();
 
     stage = "queue-snapshot";
     const snapshot = skillQueue.getQueueSnapshot(characterID);
@@ -428,6 +434,90 @@ async function queueWarCombatTraining(bot) {
   } catch (error) {
     throw new Error(formatWarTrainingError(error, stage), { cause: error });
   }
+}
+
+// Generic role training: queue exactly the skills the pilot's target hull
+// needs, reusing the war-training planner above so prerequisite resolution,
+// skillbook purchase and the durable queue behave identically on both paths.
+// Target hull is the next rung when skills block it, otherwise the hull the
+// pilot already flies — so pilots keep training after the hand-written fit is
+// satisfied instead of stalling on a 7-skill ceiling.
+async function queueRoleTraining(bot, role) {
+  const operations = require("./playerBotOperationRuntime");
+  const planner = require("./playerBotFitPlanner");
+  const characterID = positiveID(bot && bot.characterID);
+  const gap = typeof operations.nextShipUpgradeSkillGap === "function"
+    ? operations.nextShipUpgradeSkillGap(bot, role)
+    : null;
+  // The roster record carries no hull, so read it from character state.
+  const character = characterID
+    ? require("../character/characterState").getCharacterRecord(characterID) || {}
+    : {};
+  const currentHull = Math.trunc(Number(character.shipTypeID) || 0);
+  // Off-ladder hulls (Ibis, capsule) train the first real rung, and a pilot on
+  // the ladder trains the next rung even before it can fly or afford it.
+  const nextRung = typeof operations.nextShipRungForTraining === "function"
+    ? operations.nextShipRungForTraining(bot, role)
+    : null;
+  let targetHull = Math.trunc(Number(gap && gap.hullTypeID) || 0) ||
+    Math.trunc(Number(nextRung && nextRung.hullTypeID) || 0) ||
+    currentHull;
+  if (!targetHull) {
+    return { queued: false, ready: false, requiredSkills: [], queueEndTime: null, noTarget: true };
+  }
+  const mining = role === "mining";
+  // A pilot already flying a catalog-fit hull must finish that fit first: the
+  // current hull cannot be refitted while its own modules are untrainable, and
+  // jumping to the next hull would leave it stuck on the old fit forever.
+  // Off-ladder hulls (Ibis, capsule) are temporary: swap them, never train for
+  // them, even though the catalogue has an ore fit for the Ibis.
+  if (currentHull) {
+    const currentLadderRequirements = operations.getShipRungSkillRequirements(role, currentHull);
+    if (currentLadderRequirements.length) {
+      const ownRequirements = mergeSkillRequirements(
+        currentLadderRequirements,
+        planner.catalogSkillRequirements(currentHull, characterID, { mining }),
+      );
+      if (ownRequirements.length && !hasEverySkill(characterID, ownRequirements)) {
+        targetHull = currentHull;
+      }
+    }
+  }
+  // Ladder requirements keep a pilot able to buy its hand-written fit; the
+  // catalog adds what a real killmail fit for the same hull needs. Mining
+  // hulls are filtered to ore fits (no gas scoops, no ice harvesters).
+  const requirements = mergeSkillRequirements(
+    operations.getShipRungSkillRequirements(role, targetHull),
+    planner.catalogSkillRequirements(targetHull, characterID, { mining }),
+  );
+  if (!requirements.length) {
+    return { queued: false, ready: false, requiredSkills: [], queueEndTime: null, noRequirements: true, targetHull };
+  }
+  const result = await queueWarCombatTraining(bot, requirements);
+  return { ...result, targetHull };
+}
+
+function hasEverySkill(characterID, requirements) {
+  const skillState = require("../skills/skillState");
+  const getMap = skillState.getCachedCharacterSkillMap || skillState.getCharacterSkillMap;
+  const map = getMap(characterID);
+  return requirements.every(([typeID, level]) => {
+    const record = map && (map.get ? map.get(typeID) : map[typeID]);
+    return (Number(record && (record.trainedSkillLevel ?? record.skillLevel)) || 0) >= Number(level);
+  });
+}
+
+function mergeSkillRequirements(...lists) {
+  const merged = new Map();
+  for (const list of lists) {
+    for (const [typeID, level] of Array.isArray(list) ? list : []) {
+      const skillID = positiveID(typeID);
+      if (!skillID) continue;
+      const target = Math.max(1, Math.trunc(Number(level) || 1));
+      merged.set(skillID, Math.max(merged.get(skillID) || 0, target));
+    }
+  }
+  return [...merged.entries()];
 }
 
 function hasManagementRole(corporationID, characterID) {
@@ -1291,6 +1381,7 @@ module.exports = {
   processFirstWarMobilization,
   getStatusSummary,
   ensureCorpCombatPilots,
+  queueRoleTraining,
   getActiveWarCombatAssignment,
   getCombatUpgradeSupport,
   reconcileOrphanedUpgradeReservation,
