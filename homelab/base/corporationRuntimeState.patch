@@ -1,0 +1,38 @@
+--- a/server/src/services/corporation/corporationRuntimeState.js
++++ b/server/src/services/corporation/corporationRuntimeState.js
+@@ -1692,19 +1692,26 @@
+ }
+ 
+ function getAssignedMemberTitles(corporationID, memberState) {
+-  const runtime = getCorporationRuntime(corporationID) || {};
++  // Read the titles straight from the runtime table instead of deep-cloning the
++  // whole corporation runtime (which carries every member) just to filter a few
++  // titles. Only the matched titles are cloned, so callers still receive
++  // private copies and nothing shared escapes.
++  const runtimeTable = ensureRuntimeInitialized();
++  const runtime = runtimeTable.corporations[String(corporationID)] || {};
+   const rawTitleMask = normalizeInteger(memberState && memberState.titleMask, 0);
+   const titleMask = rawTitleMask >= 0 && (rawTitleMask & ~FULL_TITLE_MASK) === 0
+     ? rawTitleMask
+     : 0;
+-  return Object.values(runtime.titles || {}).filter((title) => {
+-    const titleID = normalizeInteger(title && title.titleID, 0);
+-    return (
+-      titleID > 0 &&
+-      (titleID & (titleID - 1)) === 0 &&
+-      (titleMask & titleID) === titleID
+-    );
+-  });
++  return Object.values(runtime.titles || {})
++    .filter((title) => {
++      const titleID = normalizeInteger(title && title.titleID, 0);
++      return (
++        titleID > 0 &&
++        (titleID & (titleID - 1)) === 0 &&
++        (titleMask & titleID) === titleID
++      );
++    })
++    .map((title) => cloneValue(title));
+ }
+ 
+ function getEffectiveMemberRoleMask(
