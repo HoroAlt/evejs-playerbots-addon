@@ -1,6 +1,6 @@
 "use strict";
 
-const { getCharacterRecord, getActiveShipRecord } = require("../character/characterState");
+const { getCharacterRecord, readSharedCharacterRecord, getActiveShipRecord } = require("../character/characterState");
 const playerBots = require("./playerBotRuntime");
 const spaceRuntime = require("../../space/runtime");
 const worldData = require("../../space/worldData");
@@ -357,7 +357,7 @@ function getActorSession(bot) {
     session = createActorSession(bot);
     actorSessions.set(characterID, session);
   }
-  const character = getCharacterRecord(characterID);
+  const character = readSharedCharacterRecord(characterID);
   if (!character) throw new Error(`PLAYERBOT_CHARACTER_NOT_FOUND:${characterID}`);
   syncActorSession(session, character, characterID);
   if (started && desiredConnectedCharacterIDs.has(characterID)) registerPresence(session, characterID);
