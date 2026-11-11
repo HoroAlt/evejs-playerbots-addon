@@ -1588,7 +1588,11 @@ const SHIP_LADDER = Object.freeze({
   mining: [
     { name: "Venture", hullTypeID: 32880, moduleTypeIDs: [483, 483], minBalance: 600_000 },
     // Only pilots trained in Mining Barge climb to the Procurer.
-    { name: "Procurer", hullTypeID: 17480, moduleTypeIDs: [17482], minBalance: 60_000_000, requiredSkills: [[17940, 1]] },
+    // catalogFit: the modules come from the killmail catalog (two strip miners
+    // instead of the single hard-coded one), see applyCatalogFit.
+    { name: "Procurer", hullTypeID: 17480, catalogFit: true, moduleTypeIDs: [17482], minBalance: 60_000_000, requiredSkills: [[17940, 1]] },
+    // Tech II barge: Exhumers 1 implies Mining Barge 5 through its prerequisites.
+    { name: "Mackinaw", hullTypeID: 22548, catalogFit: true, moduleTypeIDs: [], minBalance: 250_000_000, requiredSkills: [[22551, 1]] },
   ],
   security: [
     {
@@ -1693,6 +1697,21 @@ function requiredSkillsForType(typeID) {
   return required;
 }
 
+// Returns the next rung above the pilot's current hull when that rung is
+// blocked by untrained skills, so the director can queue training instead of
+// silently returning null. Returns null when there is no next rung or when the
+// pilot already satisfies every requirement.
+function nextShipUpgradeSkillGap(bot, role) {
+  const character = getCharacterRecord(bot && bot.characterID) || {};
+  const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
+  const currentHull = Number(character.shipTypeID) || 0;
+  const currentIndex = ladder.findIndex((rung) => rung.hullTypeID === currentHull);
+  const next = ladder[currentIndex + 1] || null;
+  if (!next) return null;
+  if (canUseRung(bot, next) && hasSkills(bot, next.requiredSkills)) return null;
+  return next;
+}
+
 function getCombatShipSkillRequirements(role) {
   const requirements = new Map();
   for (const rung of (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean)) {
@@ -1752,12 +1771,41 @@ function selectBootstrapRung(role, currentIndex, balance, ladder = SHIP_LADDER[r
   return { ...starter, minEarnedProfit: 0 };
 }
 
+// Hand-written mining rungs carry a single module; the killmail catalog carries
+// a full fit (two strip miners). Swap in the catalog fit for this pilot so the
+// hull is bought and flown with what actually mines. Deterministic per pilot,
+// so the replenish check and the upgrade decision always agree.
+function applyCatalogFit(bot, rung) {
+  if (!rung || rung.catalogFit !== true) return rung;
+  const fit = require("./playerBotFitPlanner").oreFitForPilot(rung.hullTypeID, bot && bot.characterID);
+  if (!fit || !fit.plan) return rung;
+  return {
+    ...rung,
+    name: `${rung.name} (${fit.name})`,
+    moduleTypeIDs: [...(fit.plan.moduleTypeIDs || [])],
+    droneTypeIDs: [...(fit.plan.droneTypeIDs || [])],
+    fitCargoPlan: [...(fit.plan.cargoPlan || [])],
+    catalogIndex: fit.catalogIndex,
+  };
+}
+
+// Raw next rung above the pilot's hull, ignoring skill and price gates. The
+// training path targets this, so a pilot prepares for the upgrade before it can
+// fly it. Off-ladder hulls resolve to the first rung of the ladder.
+function nextShipRungForTraining(bot, role) {
+  const character = getCharacterRecord(bot && bot.characterID) || {};
+  const currentHull = Number(character.shipTypeID) || 0;
+  const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
+  const currentIndex = ladder.findIndex((rung) => rung.hullTypeID === currentHull);
+  return ladder[currentIndex + 1] || null;
+}
+
 function nextShipUpgrade(bot, role = "mining", options = {}) {
   const character = getCharacterRecord(bot.characterID) || {};
   const currentHull = Number(character.shipTypeID) || 0;
   const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
   const currentIndex = ladder.findIndex((rung) => rung.hullTypeID === currentHull);
-  const currentRung = currentIndex >= 0 ? ladder[currentIndex] : null;
+  const currentRung = currentIndex >= 0 ? applyCatalogFit(bot, ladder[currentIndex]) : null;
   if (currentRung && ((currentRung.moduleTypeIDs || []).length || (currentRung.droneTypeIDs || []).length || (currentRung.cargoTypeIDs || []).length)) {
     const itemStore = require("../inventory/itemStore");
     const shipID = Number(character.shipID) || 0;
@@ -1800,12 +1848,16 @@ function nextShipUpgrade(bot, role = "mining", options = {}) {
       ? Math.max(0, Number(options.balanceOverride))
       : Number(require("../account/walletState").getCharacterWallet(bot.characterID)?.balance) || 0;
     const starter = selectBootstrapRung(role, currentIndex, balance, ladder, bot);
-    if (starter && hasSkills(bot, starter.requiredSkills) && canUseRung(bot, starter)) {
-      return starter;
+    const fittedStarter = starter ? applyCatalogFit(bot, starter) : null;
+    if (fittedStarter && hasSkills(bot, fittedStarter.requiredSkills) && canUseRung(bot, fittedStarter)) {
+      return fittedStarter;
     }
   }
   const next = ladder[currentIndex + 1] || null;
-  return next && hasSkills(bot, next.requiredSkills) && canUseRung(bot, next) ? next : null;
+  const fittedNext = next ? applyCatalogFit(bot, next) : null;
+  return fittedNext && hasSkills(bot, fittedNext.requiredSkills) && canUseRung(bot, fittedNext)
+    ? fittedNext
+    : null;
 }
 
 function startCombatReplenishment(combatOperation, bot) {
@@ -6167,6 +6219,7 @@ module.exports = {
     hasSkills,
     combatShipLadder: SHIP_LADDER,
     selectBootstrapRung,
+    nextShipUpgradeSkillGap,
     getShipRungSkillRequirements,
     getUpgradePackageNeeds,
     canRunIndependentWorkAlongsideIndustryReview,
@@ -6233,6 +6286,8 @@ module.exports = {
   getRoleShipFitProfile,
   requiredSkillsForType,
   getCombatShipSkillRequirements,
+  nextShipUpgradeSkillGap,
+  nextShipRungForTraining,
   getShipRungSkillRequirements,
   resumeOperation,
   reconcileLegacyPIExportReviews,
