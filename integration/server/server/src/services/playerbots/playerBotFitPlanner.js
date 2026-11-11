@@ -126,4 +126,162 @@ function buildFitPlan(fittingRecord) {
   };
 }
 
-module.exports = { buildFitPlan, _testing: { MAX_FIT_ROWS, MAX_FIT_CARGO_UNITS, MAX_FIT_BAY_UNITS } };
+// ---------------------------------------------------------------- catalog
+
+// The community killmail catalog that ships with the addon. Bots fly the
+// hand-written ladder hulls, but they train the skills a real fit for that hull
+// needs, so the ladder stops being a skill ceiling.
+let catalogRecords = null;
+const catalogFitsByHull = new Map();
+const catalogSkillCache = new Map();
+
+function readCatalog() {
+  if (catalogRecords) return catalogRecords;
+  try {
+    catalogRecords = require("../../../assets/fittings/fitall.json") || [];
+  } catch (_) {
+    catalogRecords = [];
+  }
+  return catalogRecords;
+}
+
+// Fit indices are stable for a given catalog file, so they double as the
+// per-pilot seed. Only hulls the ladder actually flies are planned: 5353
+// records, ~107 of them relevant, so slot validation stays cheap.
+function catalogFitsForHull(hullTypeID) {
+  const hull = Math.trunc(Number(hullTypeID) || 0);
+  if (!hull) return [];
+  if (catalogFitsByHull.has(hull)) return catalogFitsByHull.get(hull);
+  const records = readCatalog();
+  const fits = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (Math.trunc(Number(record && record.shipTypeID) || 0) !== hull) continue;
+    let planned = null;
+    try {
+      planned = buildFitPlan(record);
+    } catch (_) {
+      planned = null;
+    }
+    if (!planned || !planned.success) continue;
+    fits.push({ catalogIndex: index, name: String(record.name || ""), plan: planned.plan });
+  }
+  catalogFitsByHull.set(hull, fits);
+  return fits;
+}
+
+function pilotHash(seed) {
+  const text = String(seed || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 16777619) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+// Stable per pilot: the same character always trains toward the same fit, so
+// consecutive training calls cannot churn the queue.
+function catalogFitForPilot(hullTypeID, characterID) {
+  const fits = catalogFitsForHull(hullTypeID);
+  if (!fits.length) return null;
+  return fits[pilotHash(characterID) % fits.length];
+}
+
+function catalogFitSkillRequirements(fit) {
+  if (!fit) return [];
+  const cached = catalogSkillCache.get(fit.catalogIndex);
+  if (cached) return cached;
+  const { requiredSkillsForType } = require("./playerBotOperationRuntime");
+  const merged = new Map();
+  const typeIDs = [
+    fit.plan.shipTypeID,
+    ...(fit.plan.moduleTypeIDs || []),
+    ...(fit.plan.droneTypeIDs || []),
+    ...(fit.plan.fighterTypeIDs || []),
+  ];
+  for (const typeID of typeIDs) {
+    for (const [skillTypeID, level] of requiredSkillsForType(typeID)) {
+      merged.set(skillTypeID, Math.max(merged.get(skillTypeID) || 0, Number(level) || 1));
+    }
+  }
+  const requirements = [...merged.entries()];
+  catalogSkillCache.set(fit.catalogIndex, requirements);
+  return requirements;
+}
+
+// Skills a real killmail fit for this hull expects, picked deterministically
+// for this pilot. Used to widen the training target beyond the hand-written fit.
+function catalogSkillRequirements(hullTypeID, characterID, options = {}) {
+  if (options.mining === true) {
+    // No ore fit for this hull (Venture) means nothing to train: fall back to
+    // the catalogue's gas fits would teach Gas Cloud Harvesting for a job the
+    // pilot does not do.
+    return catalogFitSkillRequirements(oreFitForPilot(hullTypeID, characterID));
+  }
+  return catalogFitSkillRequirements(catalogFitForPilot(hullTypeID, characterID));
+}
+
+// ---------------------------------------------------------- mining fits
+
+// A fit is an ore fit only if it carries a Mining Laser / Strip Miner and no
+// ice harvester or gas scoop: the catalog's Venture fits are gas hacks, and an
+// ice harvester produces nothing at an asteroid belt.
+const ORE_MODULE_GROUP = /strip miner|mining laser/i;
+const NON_ORE_MODULE = /ice harvester|gas cloud/i;
+
+const oreFitsByHull = new Map();
+
+function planMiningYield(plan) {
+  const fitting = require("../fitting/liveFittingState");
+  let total = 0;
+  for (const typeID of plan.moduleTypeIDs || []) {
+    const amount = Number(fitting.getTypeAttributeValue(typeID, "miningAmount")) || 0;
+    if (amount > 0) total += amount;
+  }
+  return total;
+}
+
+function isOreMiningFit(plan) {
+  const registry = require("../inventory/itemTypeRegistry");
+  let hasOre = false;
+  for (const typeID of plan.moduleTypeIDs || []) {
+    const type = registry.resolveItemByTypeID(typeID) || {};
+    const name = String(type.name || "");
+    if (NON_ORE_MODULE.test(name)) return false;
+    if (ORE_MODULE_GROUP.test(String(type.groupName || ""))) hasOre = true;
+  }
+  return hasOre;
+}
+
+function oreFitsForHull(hullTypeID) {
+  const hull = Math.trunc(Number(hullTypeID) || 0);
+  if (!hull) return [];
+  if (oreFitsByHull.has(hull)) return oreFitsByHull.get(hull);
+  const fits = catalogFitsForHull(hull)
+    .filter((fit) => isOreMiningFit(fit.plan))
+    .map((fit) => ({ ...fit, miningYield: planMiningYield(fit.plan) }))
+    .filter((fit) => fit.miningYield > 0);
+  oreFitsByHull.set(hull, fits);
+  return fits;
+}
+
+// Best ore yield for this hull, tie-broken per pilot so the fleet is not all
+// on one fit. The same pilot always gets the same fit, so training and
+// purchasing agree.
+function oreFitForPilot(hullTypeID, characterID) {
+  const fits = oreFitsForHull(hullTypeID);
+  if (!fits.length) return null;
+  const bestYield = Math.max(...fits.map((fit) => fit.miningYield));
+  const top = fits.filter((fit) => fit.miningYield === bestYield);
+  return top[pilotHash(characterID) % top.length];
+}
+
+module.exports = {
+  buildFitPlan,
+  catalogFitsForHull,
+  catalogFitForPilot,
+  catalogSkillRequirements,
+  oreFitsForHull,
+  oreFitForPilot,
+  _testing: { MAX_FIT_ROWS, MAX_FIT_CARGO_UNITS, MAX_FIT_BAY_UNITS },
+};
