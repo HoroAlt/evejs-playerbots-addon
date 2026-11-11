@@ -43,11 +43,11 @@ installation never resets, moves, or reseeds them.
 
 ## Install from the release ZIP
 
-Extract `evejs-playerbots-addon-v0.2.139.zip`. In a terminal, pass the EveJS
+Extract `evejs-playerbots-addon-v0.2.140.zip`. In a terminal, pass the EveJS
 source directory as the single positional argument:
 
 ```sh
-cd EveJS-Playerbots-Addon-v0.2.139
+cd EveJS-Playerbots-Addon-v0.2.140
 EVEJS_SOURCE="/path/to/your EveJS checkout"
 ./install.sh "$EVEJS_SOURCE"
 ```

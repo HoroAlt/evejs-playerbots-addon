@@ -109,7 +109,7 @@ function getCampaignObjectives(bot, options = {}) {
 
   if (!cached || cached.expiresAt <= now) objectiveCache.set(allianceID, { expiresAt: now + OBJECTIVE_CACHE_MS, objectives: results });
 
-  const activeNodeClaims = new Set(require("./playerBotOperationRuntime").listActiveOperations()
+  const activeNodeClaims = new Set(require("./playerBotOperationRecords").listReadOnlyActiveOperations(require("./playerBotOperationRuntime"))
     .filter((operation) => operation.kind === "sovereignty")
     .map((operation) => Number(operation.nodeID) || 0));
   const currentSystemID = normalizeID((require("../character/characterState").getCharacterRecord(bot.characterID) || {}).solarSystemID);
@@ -166,7 +166,7 @@ function getNeutralHubObjectives(bot, options = {}) {
     }
     neutralObjectiveCache.set(cacheKey, { expiresAt: now + OBJECTIVE_CACHE_MS, objectives: candidates });
   }
-  const activeTargets = require("./playerBotOperationRuntime").listActiveOperations()
+  const activeTargets = require("./playerBotOperationRecords").listReadOnlyActiveOperations(require("./playerBotOperationRuntime"))
     .filter((operation) => operation.kind === "sovereignty" && operation.objectiveKind === "neutral-hub")
     .map((operation) => normalizeID(operation.targetID || operation.nodeID))
     .filter(Boolean);

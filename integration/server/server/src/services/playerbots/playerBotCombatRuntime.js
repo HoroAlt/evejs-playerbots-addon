@@ -35,7 +35,7 @@ function selectAvailableAnomaly(candidates, bot, excludedSiteInstanceIDs = []) {
     add(capacity.getBotSystemID(pilot), Number(pilot.characterID));
   }
   const claims = new Set();
-  for (const operation of require("./playerBotOperationRuntime").listActiveOperations()) {
+  for (const operation of require("./playerBotOperationRecords").listReadOnlyActiveOperations(require("./playerBotOperationRuntime"))) {
     const pilotID = Number(operation.characterID);
     if (pilotID === characterID) continue;
     if (operation.kind === "combat" && operation.siteCompleted !== true) {
@@ -790,7 +790,7 @@ function authorizeFleetAttackTarget(bot, target, scene) {
 function hasMiningEscortMembers(operation) {
   const groupKey = String(operation && operation.miningEscortGroupKey || "");
   if (!groupKey) return false;
-  return require("./playerBotOperationRuntime").listActiveOperations().some((entry) =>
+  return require("./playerBotOperationRecords").listReadOnlyActiveOperations(require("./playerBotOperationRuntime")).some((entry) =>
     entry && entry.kind === "mine" && ["active", "holding"].includes(entry.status) &&
     String(entry.miningEscortGroupKey || "") === groupKey &&
     ["to-belt", "mining"].includes(entry.stage),

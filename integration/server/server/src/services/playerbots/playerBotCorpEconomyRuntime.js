@@ -78,9 +78,20 @@ function getCorpBalance(corporationID) {
   return Number(require("../corporation/corpWalletState").getCorporationWalletBalance(corporationID, 1000)) || 0;
 }
 
+// Membership scans read one field of every pilot. The shared record avoids
+// copying each pilot's whole character for it; with 500 pilots the copies in
+// one profit-share pass held the server for most of a minute.
+function characterCorporationID(characterID) {
+  const characterState = require("../character/characterState");
+  const record = typeof characterState.readSharedCharacterRecord === "function"
+    ? characterState.readSharedCharacterRecord(characterID)
+    : getCharacterRecord(characterID);
+  return Number(record && record.corporationID) || 0;
+}
+
 function isBotCorporation(corporationID) {
   return require("./playerBotRuntime").listBots().some((bot) =>
-    Number(getCharacterRecord(bot.characterID)?.corporationID || bot.corporationID) === Number(corporationID));
+    Number(characterCorporationID(bot.characterID) || bot.corporationID) === Number(corporationID));
 }
 
 function isHumanLedBotCorporation(corporationID, knownBots = null) {
@@ -89,7 +100,7 @@ function isHumanLedBotCorporation(corporationID, knownBots = null) {
   if (!corporation || corporation.isNPC === true || ceoID <= 0 || !getCharacterRecord(ceoID)) return false;
   const bots = knownBots || require("./playerBotRuntime").listBots();
   const members = bots.filter((bot) =>
-    Number(getCharacterRecord(bot.characterID)?.corporationID || bot.corporationID) === Number(corporationID));
+    Number(characterCorporationID(bot.characterID) || bot.corporationID) === Number(corporationID));
   if (!members.length) return false;
   return !members.some((bot) => Number(bot.characterID) === ceoID);
 }
@@ -334,9 +345,14 @@ async function settleHumanLedProfitShare(bot) {
 
 async function settleProfitShares(bots = require("./playerBotRuntime").listBots()) {
   const summary = { eligibleBots: 0, contributions: 0, amount: 0, failures: 0 };
+  // Leadership is resolved once per corporation for this pass.
+  const humanLedByCorporation = new Map();
   for (const bot of bots) {
-    const corporationID = Number(getCharacterRecord(bot.characterID)?.corporationID) || 0;
-    if (!isHumanLedBotCorporation(corporationID, bots)) continue;
+    const corporationID = characterCorporationID(bot.characterID);
+    if (!humanLedByCorporation.has(corporationID)) {
+      humanLedByCorporation.set(corporationID, isHumanLedBotCorporation(corporationID, bots));
+    }
+    if (!humanLedByCorporation.get(corporationID)) continue;
     summary.eligibleBots += 1;
     try {
       const amount = await settleHumanLedProfitShare(bot);

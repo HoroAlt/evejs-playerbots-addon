@@ -143,7 +143,7 @@ function findAutonomousPurchasePlan(bot) {
   if (existingStructure) return null;
 
   const operations = require("./playerBotOperationRuntime");
-  const reserved = operations.listOperations().some((operation) =>
+  const reserved = require("./playerBotOperationRecords").listReadOnlyOperations(require("./playerBotOperationRuntime")).some((operation) =>
     Number(operation && operation.corporationID) === corporationID &&
     ["structure-procurement", "structure-deployment"].includes(operation.kind) &&
     ["active", "holding", "review"].includes(operation.status),
@@ -229,7 +229,7 @@ function findCoreInstallPlan(bot) {
     .filter((structure) => Number(structure.state) === Number(states.ONLINING_VULNERABLE));
   if (!structures.length) return null;
 
-  const activeTargets = new Set(require("./playerBotOperationRuntime").listOperations()
+  const activeTargets = new Set(require("./playerBotOperationRecords").listReadOnlyOperations(require("./playerBotOperationRuntime"))
     .filter((operation) => operation && operation.kind === "structure-core-install" &&
       ["active", "holding", "review"].includes(operation.status))
     .map((operation) => Number(operation.structureID)));
@@ -746,7 +746,7 @@ function findStructureMaintenancePlan(bot) {
   const itemTypes = require("../inventory/itemTypeRegistry");
   const itemStore = require("../inventory/itemStore");
   const session = require("./playerBotSpaceRuntime").getActorSession(bot);
-  const activeTargets = new Set(require("./playerBotOperationRuntime").listOperations()
+  const activeTargets = new Set(require("./playerBotOperationRecords").listReadOnlyOperations(require("./playerBotOperationRuntime"))
     .filter((operation) => operation && operation.kind === "structure-service-provision" &&
       ["active", "holding", "review"].includes(operation.status))
     .map((operation) => positiveID(operation.structureID)));
@@ -914,7 +914,7 @@ function findStructureServiceProvisionPlan(bot) {
     .filter((structure) => !structure.destroyedAt && !structure.unanchoring && structure.hasQuantumCore === true)
     .filter((structure) => structureState.isDockingServiceOnline(structure));
   if (!candidates.length) return null;
-  const activeTargets = new Set(require("./playerBotOperationRuntime").listOperations()
+  const activeTargets = new Set(require("./playerBotOperationRecords").listReadOnlyOperations(require("./playerBotOperationRuntime"))
     .filter((operation) => operation && operation.kind === "structure-service-provision" &&
       ["active", "holding", "review"].includes(operation.status))
     .map((operation) => Number(operation.structureID)));

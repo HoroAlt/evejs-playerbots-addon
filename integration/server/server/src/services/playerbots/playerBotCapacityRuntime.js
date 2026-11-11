@@ -1,6 +1,6 @@
 "use strict";
 
-const DEFAULT_MAX_AUTONOMOUS_BOTS_PER_SYSTEM = 300;
+const DEFAULT_MAX_AUTONOMOUS_BOTS_PER_SYSTEM = 50;
 
 function getMaxAutonomousBotsPerSystem() {
   return require("./playerBotConfigurationRuntime").getSettings().maxPerSystem;

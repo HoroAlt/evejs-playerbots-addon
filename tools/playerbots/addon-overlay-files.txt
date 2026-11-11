@@ -25,6 +25,7 @@ server/src/services/corporation/warDeclarationState.js
 server/src/services/dungeon/dungeonAuthority.js
 server/src/services/dungeon/dungeonRuntimeState.js
 server/src/services/dungeon/dungeonUniverseRuntime.js
+server/src/services/dungeon/dungeonUniverseSiteService.js
 server/src/services/fleets/fleetRuntime.js
 server/src/services/mail/mailState.js
 server/src/services/market/asyncWorkDeduper.js

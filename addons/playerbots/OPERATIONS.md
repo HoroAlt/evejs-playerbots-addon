@@ -591,7 +591,7 @@ EVEJS_PLAYER_BOTS_ADDON_BOT_DELAY_MS=0
 EVEJS_PLAYER_BOTS_ADDON_REQUEST_TIMEOUT_MS=120000
 EVEJS_SCHEDULER_MAX_CONCURRENT_DISPATCH=24
 EVEJS_PLAYER_BOTS_MAX_CONCURRENT_WORK=1500
-EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM=300
+EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM=50
 EVEJS_PLAYER_BOTS_DIRECTOR_THINK_MIN_MS=90000
 EVEJS_PLAYER_BOTS_DIRECTOR_THINK_MAX_MS=210000
 EVEJS_PLAYER_BOTS_DIRECTOR_INITIAL_SPREAD_MS=90000
@@ -649,7 +649,7 @@ read-only and adds no host port.
 | Memory and garbage collection | Resident memory, heap against its limit, and the duration of recent collections. |
 | Scheduler | How late playerbot jobs start and how many dispatch slots are in use; optionally the number scheduled, running and due. |
 | Subsystem work | Duration of director passes and their stages, per-pilot autonomy steps, scheduled jobs by type, and the dashboard summary. |
-| Scene load | Bot ships in space, the systems they occupy, and how many are in systems with no human pilot in space. |
+| Scene load | Bot ships in space, the systems they occupy, how many are in systems with no human pilot in space, and the site-upkeep cadence used there. |
 
 The event-loop state uses the same boundaries as the add-on's load guard:
 
@@ -673,10 +673,11 @@ healthy. These numbers describe this server under its current load; they are
 not a capacity guarantee for other hardware.
 
 How late scheduled jobs start is always measured and costs nothing extra.
-Counting scheduled, running and due jobs requires listing them inside the
-scheduler process, which took about 15 seconds on a saturated 500-pilot test
-server and delayed other scheduler requests. That queue scan is therefore off
-by default. Set `EVEJS_PLAYER_BOTS_TELEMETRY_QUEUE_SCAN=1` and restart `server`
+Counting scheduled, running and due jobs requires one listing of every
+playerbot job. The scheduler process answers in milliseconds, but the reply
+waits for EveJS's main thread, so on a saturated 500-pilot test server the
+round trip took up to 15 seconds. That queue scan is therefore off by
+default. Set `EVEJS_PLAYER_BOTS_TELEMETRY_QUEUE_SCAN=1` and restart `server`
 to enable it; it then runs only when the page or endpoint is read, is reused
 for 60 seconds (`EVEJS_PLAYER_BOTS_TELEMETRY_BACKLOG_INTERVAL_MS`), and a
 request waits at most 1.5 seconds for it. Subsystem durations include time
@@ -685,6 +686,24 @@ separately and is not part of any held slice.
 Set `EVEJS_PLAYER_BOTS_TELEMETRY_FILE=1` to also write a snapshot every minute
 to `runtime-performance/playerbots-latest.json` under the EveJS data root.
 Keep that file out of public source control.
+
+## Systems with no human pilot in space
+
+EveJS runs dungeon and incursion site upkeep once a second, and refreshes
+incursion system effects on every 100 ms gameplay tick, in every loaded solar
+system. With hundreds of bot ships spread over dozens of systems and no human
+nearby, that upkeep was the largest single cost on the profiled 500-pilot
+server. The add-on therefore runs both once every ten seconds in a system
+where no human pilot is in space. Site logic is driven by timestamps, so
+spawns, gates, hazards and completions are still decided by the same EveJS
+site authorities; they are only noticed up to ten seconds later. As soon as
+a human pilot is in space in a system, that system returns to the normal
+cadence. Ship movement, weapons, NPC behaviour and Crimewatch are not slowed.
+
+Set `EVEJS_PLAYER_BOTS_UNOBSERVED_SITE_TICK_MS` to another interval between
+`1001` and `60000`, or to `0` to run every system at the normal cadence, and
+restart `server`. The Performance page shows the interval in use and how many
+upkeep passes were skipped.
 
 ## Director slice budget
 

@@ -339,12 +339,40 @@ function createBotSession(bot) {
   return session;
 }
 
+// The corporation authority copies the whole corporation runtime to resolve
+// one member's role masks, and a director pass asks for the same pilot's
+// session many times within a few milliseconds. Reuse the answer for a
+// minute; a change of corporation or docking location always reads again.
+// EveJS still checks persisted authority when a corporation action runs.
+const BOT_ROLE_STATE_REUSE_MS = 60_000;
+const BOT_ROLE_STATE_MAX_ENTRIES = 5_000;
+const botRoleStateCache = new Map();
+
+function readBotCorporationRoleState(corporationID, characterID, record) {
+  const locationKey = `${Number(record.stationID) || 0}:${Number(record.structureID) || 0}`;
+  const now = Date.now();
+  const cached = botRoleStateCache.get(characterID);
+  if (cached && cached.corporationID === corporationID && cached.locationKey === locationKey &&
+      now - cached.readAtMs < BOT_ROLE_STATE_REUSE_MS && now >= cached.readAtMs) {
+    return cached.roleState;
+  }
+  const roleState = getCorporationSessionRoleState(corporationID, characterID);
+  if (botRoleStateCache.size >= BOT_ROLE_STATE_MAX_ENTRIES) botRoleStateCache.clear();
+  botRoleStateCache.set(characterID, { corporationID, locationKey, readAtMs: now, roleState });
+  return roleState;
+}
+
+function forgetBotCorporationRoleState(characterID = 0) {
+  if (Number(characterID) > 0) botRoleStateCache.delete(Number(characterID));
+  else botRoleStateCache.clear();
+}
+
 function syncBotCorporationSession(session, bot, character = null) {
   if (!session || !bot || !Number(bot.characterID)) return session;
   const record = character || getCharacterRecord(bot.characterID) || {};
   const corporationID = Number(record.corporationID || bot.corporationID) || 0;
   const roleState = corporationID > 0
-    ? getCorporationSessionRoleState(corporationID, Number(bot.characterID))
+    ? readBotCorporationRoleState(corporationID, Number(bot.characterID), record)
     : null;
   Object.assign(session, roleState || {
     corprole: 0n,
@@ -903,6 +931,7 @@ module.exports = {
   getBotByCharacterID,
   getPlanningRoster,
   getBotCount,
+  forgetBotCorporationRoleState,
   syncBotCorporationSession,
   addBotToPlayerFleet,
   getStatusMessage,

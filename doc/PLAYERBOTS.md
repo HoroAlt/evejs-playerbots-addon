@@ -48,7 +48,7 @@ slots open; idle bots do not occupy a space scene. Up to 100 additional mobility
 slots let over-capacity bots relocate even when ordinary work slots are full.
 Set
 `EVEJS_PLAYER_BOTS_MAX_CONCURRENT_WORK` (1–5,000) or
-`EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM` (1–300) to change those limits. Bots in the
+`EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM` (1–300, default 50) to change those limits. Bots in the
 same fleet as a connected human are treated as human-controlled and do not use
 the per-system allowance or autonomous work slots. Human player corporations
 reserve enough work slots to keep at least three bots productive while a member

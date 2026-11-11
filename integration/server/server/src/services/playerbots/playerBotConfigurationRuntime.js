@@ -7,6 +7,7 @@ const PATH = "/_dashboardSettings";
 const MAX_ROSTER = 15_000;
 const MAX_ONLINE = 5_000;
 const MAX_PER_SYSTEM = 300;
+const DEFAULT_PER_SYSTEM = 50;
 const ROSTER_SEED_SAFETY_LIMITS = Object.freeze({
   batchSize: 10,
   eventLoopP95Ms: 250,
@@ -34,7 +35,7 @@ function defaults() {
     rosterSeedMaxProcessCpuPercent: envInteger("EVEJS_PLAYER_BOTS_ROSTER_SEED_MAX_PROCESS_CPU_PERCENT", 85, 25, ROSTER_SEED_SAFETY_LIMITS.processCpuPercent),
     rosterSeedMaximumSingleBotMs: envInteger("EVEJS_PLAYER_BOTS_ROSTER_SEED_MAX_SINGLE_BOT_MS", 1_000, 25, ROSTER_SEED_SAFETY_LIMITS.maximumSingleBotMs),
     connectionWindowMs: envInteger("EVEJS_PLAYER_BOTS_CONNECTION_WINDOW_MS", 8 * 60 * 60 * 1000, 5 * 60 * 1000, 7 * 24 * 60 * 60 * 1000),
-    maxPerSystem: envInteger("EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM", MAX_PER_SYSTEM, 1, MAX_PER_SYSTEM),
+    maxPerSystem: envInteger("EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM", DEFAULT_PER_SYSTEM, 1, MAX_PER_SYSTEM),
     // The active-work ceiling must cover every pilot the connection scheduler
     // is allowed to keep online; director mutations themselves stay batched.
     maxConcurrentWork: envInteger("EVEJS_PLAYER_BOTS_MAX_CONCURRENT_WORK", Math.min(rosterTarget, maxOnline), 1, 5_000),

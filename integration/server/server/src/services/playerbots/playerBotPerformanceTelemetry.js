@@ -619,7 +619,18 @@ function createPlayerBotPerformanceTelemetry(options = {}) {
       // Bot ships simulated in systems where no human pilot is in space.
       botsInUnobservedSystems: botsInSpace - botsInObservedSystems,
       largestBotScene: largest,
+      siteUpkeep: siteUpkeepStats(),
     };
+  }
+
+  // Counts since process start of site upkeep passes run or skipped under
+  // the unobserved-system cadence.
+  function siteUpkeepStats() {
+    try {
+      return require("./playerBotUnobservedScenePolicy").getStats();
+    } catch (_error) {
+      return null;
+    }
   }
 
   function guarded(build) {

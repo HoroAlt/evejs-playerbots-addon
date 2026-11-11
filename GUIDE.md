@@ -114,7 +114,7 @@ enforces the configured online cap (hard maximum 5,000) and rotation window.
 `EVEJS_PLAYER_BOTS_ADDON_CONCURRENCY` controls parallel work steps
 (default 16); `EVEJS_PLAYER_BOTS_MAX_CONCURRENT_WORK` controls active durable
 work (default 100); `EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM` sets the normal
-autonomous system limit (default 300). These settings do not change the roster
+autonomous system limit (default 50, at most 300). These settings do not change the roster
 size. The server clamps active add-on steps as load rises: four above 50 ms
 event-loop p95 or 70% CPU, two above 100 ms or 85% CPU, and one above 250 ms
 or 95% CPU. The add-on logs the current effective limit. Bots may enter a full

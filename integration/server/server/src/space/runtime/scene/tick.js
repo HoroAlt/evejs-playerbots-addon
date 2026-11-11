@@ -332,7 +332,11 @@ module.exports = {
 // and any movement change it makes waits in the queue for the next Destiny
 // tick.
 tick(wallclockNow) {
-    require("../../../services/incursion/incursionSystemEffects").refreshScene(this);
+    // Playerbots add-on: a system with no human pilot in space refreshes
+    // incursion system effects on a slower cadence.
+    if (require("../../../services/playerbots/playerBotUnobservedScenePolicy").shouldRefreshSystemEffects(this)) {
+      require("../../../services/incursion/incursionSystemEffects").refreshScene(this);
+    }
     try {
       require("../../../services/dungeon/siteHazardOutcomes").recoverForScene(this);
     } catch (error) {

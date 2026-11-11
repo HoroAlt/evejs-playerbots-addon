@@ -2002,173 +2002,164 @@ matching wallet, market, and inventory evidence.
 Add-on `0.2.137` changes the fresh-install roster target to 500. Existing
 installations retain their saved target and environment settings.
 
-## Subsystem telemetry, bounded director passes and patrol rotation — 10 Nov 2026
+## Telemetry, main-thread cost removal, patrol rotation and unobserved systems — add-on 0.2.140, 11 Nov 2026
 
-Add-on `0.2.138` adapts four patterns from the Living Universe patch while
-keeping playerbots as persistent EveJS characters with sessions, wallets,
-corporations and operations that go through the EveJS game authorities.
+Add-on `0.2.140` is the single current release. It replaces the `0.2.138` and
+`0.2.139` test builds of 10 Nov 2026 and contains all of their work. It adapts
+four patterns from the Living Universe patch while keeping playerbots as
+persistent EveJS characters with sessions, wallets, corporations and
+operations that go through the EveJS game authorities.
+
+### What the release contains
 
 - **Performance telemetry.** `GET /v1/dashboard/telemetry` and the dashboard's
   Performance page report event-loop delay, process and main-thread CPU,
-  memory, garbage collection, durable-scheduler backlog and start delay, work
-  time per subsystem, and how many bot ships are in systems with no human pilot
-  in space. Sampling is continuous and cheap; the scheduler queue is scanned
-  only when the page or endpoint is read, and that scan is reused for 60
-  seconds. Earlier latency findings in this roadmap came from one-off V8
-  profiles; these measurements are available at any time.
+  memory, garbage collection, how late scheduled playerbot work starts, work
+  time per subsystem, how many bot ships are in systems with no human pilot in
+  space, and the site-upkeep cadence used there. Counting scheduled, running
+  and due jobs is optional (`EVEJS_PLAYER_BOTS_TELEMETRY_QUEUE_SCAN=1`).
 - **Director slice budget.** A director pass hands control back to EveJS
   between pilots once its uninterrupted slice exceeds `directorSliceBudgetMs`
-  (default 8 ms; 0 disables yielding and only measures). On a saturated
-  event loop each yield returns late, so a pass stops yielding after two
-  seconds of accumulated waiting and completes in one slice. A pilot that became
-  busy while the pass waited is skipped for that pass, and an operator who
-  switches autonomous work off during a pass keeps that setting when the pass
-  ends. Candidate ordering reads each pilot's record once instead of once per
-  comparison and produces the same order. Assignment rules, the 20-attempt
-  limit and capacity limits are unchanged.
+  (default 8 ms; 0 disables yielding and only measures). On a saturated event
+  loop each yield returns late, so a pass stops yielding after two seconds of
+  accumulated waiting and completes in one slice. Assignment rules, the
+  20-attempt limit and capacity limits are unchanged.
 - **Patrol rotation.** Piracy pilots no longer all deploy to the nearest pirate
   system. Up to eight systems within six jumps of the nearest are ranked by
   distance, patrols already assigned and deployments in the last six hours.
   Each corporation rotates on its own 45–180 minute period, a system takes at
   most six patrols, and a corporation that used one system in three
-  consecutive periods moves on while another is available. Routes are
-  previewed only for the chosen system, at most three per decision. A pilot
-  with no system below the cap receives the director's normal fallback work.
-  Target legality remains with Crimewatch, war status and the combat safety
-  checks. `EVEJS_PLAYER_BOTS_PATROL_ROTATION=0` restores nearest-system
-  selection.
+  consecutive periods moves on while another is available. Target legality
+  remains with Crimewatch, war status and the combat safety checks.
+  `EVEJS_PLAYER_BOTS_PATROL_ROTATION=0` restores nearest-system selection.
 - **Installation verifier.** `verify.py` reports, per subsystem, whether every
-  guarded file and add-on file matches the release. It only reads files. The
-  integration manifest (schema 3) records a subsystem for each guarded file
-  and hashes for the add-on process files.
+  guarded file and add-on file matches the release. It only reads files.
+- **Systems with no human pilot in space.** EveJS runs dungeon and incursion
+  site upkeep once a second and refreshes incursion system effects on every
+  100 ms gameplay tick in every loaded system. Where no human pilot is in
+  space, both now run once every ten seconds
+  (`EVEJS_PLAYER_BOTS_UNOBSERVED_SITE_TICK_MS`, `0` restores the normal
+  cadence). Site logic is timestamp-driven, so spawns, gates, hazards and
+  completions are decided by the same site authorities and only noticed
+  later. A human pilot in space restores the normal cadence in that system at
+  once. Movement, weapons, NPC behaviour and Crimewatch are not slowed.
+- **Main-thread costs removed.** Structure, combat, sovereignty and alliance
+  planning read pilot operations without copying all of them on every call.
+  A pilot's corporation role masks are reused for up to a minute, or until the
+  pilot changes corporation or docking location, instead of being recomputed
+  on every session read. The profit-share pass resolves each corporation's
+  leadership once instead of copying every pilot's character once per pilot.
+  Repeated hits from one pirate NPC are assessed once every three seconds per
+  pilot instead of once per hit. Site spawn checks share one template copy per
+  call instead of three per encounter plan.
+- **Default per-system limit.** The default number of autonomous bots per
+  solar system is 50 (it was 300); the hard maximum stays 300 and a value
+  saved by the operator is kept.
 
 Not adopted from Living Universe: session-less virtual pilots, fixed
 pirate/police hostility, scripted campaigns, encounter timers, doctrine
 catalogs that would replace the fitting planner, and NPC-stocked regional
 markets. Jita remains a seed source for permitted purchases only.
 
-| Gate | Implemented | Focused tests | In ZIP for EveJS 261108.1 | Live behaviour proven |
-| --- | --- | --- | --- | --- |
-| Subsystem telemetry | yes | yes | yes | recorded in the 10 Nov handoff |
-| Director slice budget | yes | yes | yes | recorded in the 10 Nov handoff |
-| Patrol rotation | yes | yes | yes | no live patrol evidence yet |
-| Installation verifier | yes | install/rollback matrix | yes | not applicable |
+### What profiling the 500-pilot server showed
 
-The complete isolated suite passed on the supported remote host before this
-archive was built: 115 test files, 416 tests, no failures, on the deployment's
-Node.js 24 runtime in an offline container. New files cover the work budget,
-telemetry, the budgeted director pass, patrol rotation and its combat-runtime
-integration; the add-on API, configuration and dashboard tests were extended.
-One stale expectation was corrected: the default work ceiling follows the
-500-pilot default target introduced in `0.2.137`.
+Earlier entries attributed the delay to long director stages and industry
+steps. A CPU profile of the main thread on the live 500-pilot server, with no
+human online, showed otherwise. Those durations were mostly time spent
+waiting for a saturated event loop; the processor time went to:
 
-Install, rollback, disposable-copy integration and production results for this
-archive are recorded in the 10 Nov 2026 handoff, because they are measured
-with the archive after it is built. Open after this release: reducing
-simulation detail in systems with no human present (this release only measures
-that load), an audit of delivery receipts and loss replacement against the
-Living Universe reservation pattern, the 15,000-pilot and 5,000-online
-targets, and every live gate listed earlier in this roadmap.
+| Share of main-thread CPU | Where |
+| --- | --- |
+| 38% | dungeon and incursion site upkeep in loaded systems, all of them unobserved |
+| 21% | director passes: copying every operation for each structure plan (11%) and recomputing corporation role masks on every session read (most of the rest) |
+| 12% | the gameplay and movement tick of the loaded systems |
+| 7% | threat responses, one full assessment per NPC hit |
+| 8% | garbage collection |
+| 3% | the scheduled playerbot jobs themselves |
 
-## Remote validation of 0.2.138 and the 0.2.139 follow-up — 10 Nov 2026
+A second profile caught the five-minute cycle's profit-share pass copying
+250,000 character records and holding the server for 43–65 s. The scheduler's
+"slow job listing" recorded on 10 Nov was a misreading: the scheduler process
+answers a listing in about one millisecond and the reply then waits seconds
+for the main thread. The tens of thousands of authority-timing warnings per
+hour are a symptom of the saturated event loop, not a separate defect.
 
-**Validation of the `0.2.138` archive on the supported remote host.** All of
-this used a disposable directory with copies of the real installation; the
-real databases were only read to make consistent SQLite backups, and their
-size and modification time were unchanged afterwards.
+### Measured on a disposable copy of the live server
 
-- Clean install on the original EveJS `261108.1` source: verifier reported
-  not-installed (exit 3), dry run passed, install passed, verifier reported
-  every guarded file installed (exit 0), a one-line change was reported as
-  drift (exit 1) and rollback refused to overwrite it (exit 2); after the
-  change was reverted, rollback restored a tree identical to the original and
-  the operator `.env` and game-data sentinels were intact.
-- Upgrade of a copy of the live `0.2.136` installation: the seven conflicting
-  files were confirmed byte-identical to the committed `0.2.136` overlay
-  before `--replace-conflicts` was used; verifier passed; rollback restored
-  the previous installation byte for byte.
-- Integration on a disposable server with copied GameStore and Market
-  databases, no published game ports and a new API token: all 500 pilots
-  reattached, the add-on cycle advanced with zero failed steps, the telemetry
-  endpoint and dashboard page responded, no uncaught errors were logged, and
-  both copied databases passed `PRAGMA integrity_check` after shutdown.
+Same host, copied databases, 500 pilots online, no human online, director
+slice budget 8 ms. Rates are per minute over each window; "start delay" is how
+late scheduled work started at the end of the window.
 
-**What the telemetry showed.** The 500-pilot server is saturated on its main
-thread, as earlier profiles suggested: main-thread CPU stayed at 85–99% of one
-core, event-loop p95 between 1.3 and 5.6 s with stalls up to 17 s, about
-1,100 playerbot jobs due at any time and jobs starting minutes late. No human
-was online, so every bot ship in space (about 320, in 31 systems, 87 in the
-largest) was simulated in a system nobody was observing. Longest measured
-work: industry cycle steps averaged 6.2 s (p95 24 s) and navigation steps
-2.5 s of wall time; a full director pass spent 3.7 s in one uninterrupted
-capacity stage and 2.4–3.4 s in candidate selection; an idle-roster pass held
-single slices of up to 15 s. Those slices are inside one pilot's work or one
-stage, where yielding between pilots cannot reach.
+| Build | Director think jobs | Industry steps | Navigation steps | Pilot steps | Start delay | Event-loop p95, median | Main thread |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Before (10 Nov build, 10 min) | 71 | 64 | 26 | 19 | 7–8 min | 4.0 s | 85–98% |
+| `0.2.140` (21 min) | 139 | 139 | 49 | 56 | about 4 min | 3.1 s | 58–98% |
 
-**Director slice budget, measured.** Without a limit on waiting, yielding on
-the saturated server stretched one director pass to 193 s, because each yield
-returned seconds late; that is why a pass now stops yielding after two seconds
-parked. With that limit, two ten-minute windows on the same disposable server
-compared a budget of 8 ms with yielding disabled:
+The profit-share pass fell from 43–65 s to 12–17 s per cycle. In the final
+profile site upkeep was 12% of main-thread CPU, the gameplay tick 25%,
+garbage collection 20% and scheduled playerbot jobs 14%.
 
-| Window | Event-loop p95, median | Worst stall | Director think jobs | Navigation steps | Pilot steps | Oldest overdue job |
-| --- | --- | --- | --- | --- | --- | --- |
-| Budget 8 ms | 4.0 s | 10.9 s | 714 | 262 | 192 | 459 s |
-| Yielding off | 2.6 s (1.6 s counting two empty samples) | 17.5 s | 514 | 181 | 173 | 732 s |
-| Budget 8 ms, six-minute control | 3.6 s | 6.9 s | 405 | 124 | 110 | 544 s |
+Scheduled work completes two to three times faster and starts sooner. **The
+server is still overloaded at 500 pilots on this host**: main-thread CPU stays
+near one full core, event-loop delay is still measured in seconds, and the
+load guard still holds bot steps at one at a time. The freed time is taken up
+by the backlog of late work. What remains is mostly the simulation of about
+45 loaded systems and the bots' own work, not a single removable hot spot.
+The before and after windows are from different runs with drifting workload,
+so the rates are indicative, not a controlled benchmark.
 
-More scheduled work completed and the worst stall was shorter with the budget,
-but median event-loop delay was not lower. The windows are short and the
-workload drifts, so this is not evidence that the budget reduces latency on a
-saturated server. It does not restore responsiveness; the remaining cost is
-in the uninterrupted slices listed above. The default stays at 8 ms because
-throughput was higher and the waiting limit bounds its cost; `0` restores the
-previous single-slice pass.
+### Patrol rotation, live
 
-**Production deployment of `0.2.138`.** The archive whose SHA-256 was
-verified in the tests above was installed on the live checkout after fresh
-backups of both databases and of every file changed. The verifier reported
-the already fast-forwarded checkout identical to the archive before and after
-installation, and Git showed no modified tracked file, so the installed
-archive, the published commit and the tested archive are the same. The
-service unit, control command and panel entry now start EveJS with the
-add-on's Compose override, which is how the containers had been started by
-hand; the resolved playerbot environment was compared with the previous
-containers and differed only by the three new variables. After start through
-the existing control command: Market, EveJS and the add-on healthy with no
-restarts, 500 of 500 pilots online, 500 with active work, 319 in space, six
-specialist corporations and five structures present, both live databases
-passing a read-only `PRAGMA quick_check`, and unrelated containers unchanged.
-Event-loop p95 in the first ten minutes after start was 4.6–5.0 s; the server
-remains overloaded at this roster size.
+On the live server every one of the 68 piracy patrols created before the
+rotation was deployed went to the same system. The eight created afterwards
+were assigned to four different systems, at most three to one. They belonged
+to one corporation and were still travelling when checked, so arrival,
+engagement and the per-corporation rotation over several periods are not yet
+observed.
 
-**Finding that led to `0.2.139`.** Listing jobs inside the scheduler process
-took about 15 s on the saturated server and timed out other scheduler
-requests. The telemetry queue scan sent such a listing whenever the
-Performance page was open. `0.2.139` turns that scan off by default
-(`EVEJS_PLAYER_BOTS_TELEMETRY_QUEUE_SCAN=1` enables it); how late jobs start is
-still measured continuously without any listing. The same slow listing
-affects existing callers that look up a pilot's jobs, which is recorded here
-as an open performance item, not fixed in this release.
+### Delivery receipt and loss-replacement audit
+
+The Living Universe patch reserves virtual stock, delivers it and records a
+terminal receipt. Playerbots move real items and ISK through the EveJS
+authorities, so the question was whether any flow can charge without
+delivering, or deliver twice, after an interruption. This was a code review,
+not a restart-injection test.
+
+| Flow | Protection found |
+| --- | --- |
+| Ship and module purchase (upgrade, loss replacement) | pending marker with wallet and inventory baselines saved before the market call; an unknown or charged-without-items outcome goes to review and is reconciled against the wallet and hangar, never retried blindly |
+| Industry-cycle purchase, sale and listing | pending marker with unit, balance, order and transaction baselines; recovery reconciles against the market and wallet journal; listings that changed nothing are confirmed over repeated observations |
+| Industry job install and delivery | pending marker with quoted cost and balance baseline; delivery keyed by job |
+| Supply contract between pilots | pending marker with a token, seller, units and price |
+| Trade tasks | uncertain sales and purchases are flagged for review and not repeated |
+| Planetary export and collection | operation key per launch; refund and collection use idempotency keys |
+| Profit share, starting capital, war grants and stipends | wallet transfers carry idempotency keys; an interrupted profit-share transfer is recovered from the journal |
+| Hauling and couriers | real items in a real cargo hold; a restart can only miscount the informational "units moved" total, not create or lose items |
+| Working after a loss | combat and mining assignments require a complete fitted hull for the role; capsule recovery defers to any unresolved purchase or industry job |
+
+Conclusion: no change required and none made. Open: a test that interrupts
+the process between charge and effect for each flow.
+
+### Gates
 
 | Gate | Implemented | Focused tests | In ZIP for EveJS 261108.1 | Live behaviour proven |
 | --- | --- | --- | --- | --- |
-| Subsystem telemetry | yes | yes | yes | endpoint and page served live data on the production server |
-| Director slice budget | yes | yes | yes | passes yield and stop yielding when saturated; no latency improvement shown |
-| Patrol rotation | yes | yes | yes | no piracy patrol started during the test or deployment window |
+| Subsystem telemetry | yes | yes | yes | yes, on the production server |
+| Director slice budget | yes | yes | yes | passes yield and stop yielding when saturated; no latency benefit shown |
+| Patrol rotation | yes | yes | yes | destinations spread across four systems; arrival and multi-period rotation not yet observed |
 | Installation verifier | yes | install/rollback matrix | yes | passed on the production checkout |
+| Unobserved-system cadence | yes | yes | yes | counters show passes skipped on the disposable server; never exercised with a human entering a system |
+| Main-thread cost removal | yes | yes | yes | two to three times the completed work on the disposable server; server still overloaded |
+| Per-system default of 50 | yes | yes | yes | not applicable |
 
-Open: reduce the uninterrupted slices named above (industry cycle step,
-capacity stage, candidate selection); the scheduler's slow job listing; the
-burst of overdue jobs after every restart; a decision on reduced simulation
-detail for systems with no human present; the delivery-receipt and
-loss-replacement audit; live proof of patrol rotation; and every earlier live
-gate in this roadmap. The roster-size targets above 500 remain unvalidated and
-this evidence argues against raising the roster on this host.
+Install, rollback and production results for the archive are recorded in the
+11 Nov 2026 handoff, because they are measured after the archive is built.
 
-The complete isolated suite passed again on the remote host for `0.2.139`
-before its archive was built: 115 test files, 417 tests, no failures. The
-install, upgrade and rollback matrix was repeated with the `0.2.139` archive.
-A second disposable server was not started for `0.2.139` because the live
-server was running and the host had too little free memory for both; the only
-runtime change from `0.2.138` is the default-off queue scan.
+Open after this release: the server remains overloaded at 500 pilots on the
+test host, so either the roster, the number of loaded systems or the per-pilot
+work must come down, or the remaining simulation cost must be reduced further;
+the unobserved cadence has not been exercised with a human arriving; patrol
+arrival and rotation over several periods; interruption tests for the audited
+flows; the burst of overdue jobs after every restart; the 15,000-pilot and
+5,000-online targets, which this evidence argues against on this host; and
+every live gate listed earlier in this roadmap.

@@ -545,7 +545,7 @@ function detachBotActorFromSpace(characterID, reason = "capacity") {
 }
 
 function activeWorkCharacterIDs() {
-  const operations = require("./playerBotOperationRuntime").listActiveOperations();
+  const operations = require("./playerBotOperationRecords").listReadOnlyActiveOperations(require("./playerBotOperationRuntime"));
   const cycles = require("./playerBotIndustryCycleRuntime").listActiveCycles();
   return new Set([...operations, ...cycles].map((work) => normalizePositiveID(work.characterID)).filter(Boolean));
 }

@@ -68,7 +68,12 @@ function botRoster() {
 }
 
 function getCurrentCorporationID(bot) {
-  const character = require("../character/characterState").getCharacterRecord(bot && bot.characterID) || {};
+  // Only the corporation is read, so the shared record is enough and avoids
+  // copying the whole character on every roster scan.
+  const characterState = require("../character/characterState");
+  const character = (typeof characterState.readSharedCharacterRecord === "function"
+    ? characterState.readSharedCharacterRecord(bot && bot.characterID)
+    : characterState.getCharacterRecord(bot && bot.characterID)) || {};
   return positiveID(character.corporationID || bot && bot.corporationID);
 }
 

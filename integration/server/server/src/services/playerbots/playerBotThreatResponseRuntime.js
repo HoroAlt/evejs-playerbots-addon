@@ -55,6 +55,9 @@ function wake(characterID) {
   return true;
 }
 
+const NPC_ASSESSMENT_REUSE_MS = 3_000;
+const lastNpcAssessmentByCharacter = new Map();
+
 async function handleIncomingThreat(payload, dependencies = {}) {
   const playerBots = dependencies.playerBots || require("./playerBotRuntime");
   const operationRuntime = dependencies.operationRuntime || require("./playerBotOperationRuntime");
@@ -76,6 +79,15 @@ async function handleIncomingThreat(payload, dependencies = {}) {
   // of the mining group so a rat cannot sit on grid for a full poll interval.
   if (pirateNPC) {
     wake(bot.characterID);
+    // Every hit from the same rat arrives here. One assessment per pilot and
+    // attacker every few seconds decides the same thing as one per hit.
+    const assessedAtMs = typeof dependencies.now === "function" ? dependencies.now() : Date.now();
+    const previous = lastNpcAssessmentByCharacter.get(bot.characterID);
+    if (previous && previous.attackerEntityID === attackerEntityID &&
+        assessedAtMs - previous.atMs < NPC_ASSESSMENT_REUSE_MS && assessedAtMs >= previous.atMs) {
+      return { handled: true, action: "wake-pve-response", attackerEntityID, reused: true };
+    }
+    lastNpcAssessmentByCharacter.set(bot.characterID, { attackerEntityID, atMs: assessedAtMs });
     if (operation && operation.kind === "combat" && ["active", "holding"].includes(operation.status)) {
       const decision = combatRuntime.assessDefensiveResponse(bot, attacker, payload.scene, operation);
       if (decision.action === "engage") {
@@ -189,7 +201,7 @@ function scheduleThreatResponse(payload) {
     if (!latest) return;
     try {
       const result = await handleIncomingThreat(latest);
-      if (result && result.handled) {
+      if (result && result.handled && result.reused !== true) {
         require("../../utils/logger").info(
           `[PlayerBots] Threat response char=${characterID} attacker=${result.attackerEntityID || "unknown"} action=${result.action}${result.reason ? ` reason=${String(result.reason).slice(0, 120)}` : ""}.`,
         );

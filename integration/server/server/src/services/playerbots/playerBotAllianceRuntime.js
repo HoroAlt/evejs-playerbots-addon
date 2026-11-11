@@ -19,7 +19,7 @@ function getAllianceFoundingPlan(bot) {
   const corporation = getBotCorporation(bot);
   if (!corporation || positiveID(corporation.allianceID)) return null;
   const corporationID = positiveID(corporation.corporationID || bot.corporationID);
-  const activeFounding = require("./playerBotOperationRuntime").listActiveOperations()
+  const activeFounding = require("./playerBotOperationRecords").listReadOnlyActiveOperations(require("./playerBotOperationRuntime"))
     .find((operation) => operation.kind === "alliance-founding" &&
       Number(operation.corporationID) === corporationID);
   if (activeFounding && Number(activeFounding.characterID) !== Number(bot.characterID)) return null;
