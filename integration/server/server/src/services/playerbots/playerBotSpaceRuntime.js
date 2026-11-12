@@ -1305,7 +1305,10 @@ async function estimateOreValuePerVolume(bot, stationID, oreTypeID) {
   return (await readOreMarketValuePerUnit(bot, stationID, oreTypeID)) / volume;
 }
 
-async function mineNearestAsteroid(bot, miningModules, approachMeters, marketStationID = 0) {
+async function mineNearestAsteroid(bot, miningModules, approachMeters, marketStationID = 0, options = {}) {
+  const valid = () => typeof options.isCurrent !== "function" || options.isCurrent() === true;
+  const interrupted = () => ({ success: true, interrupted: true, phase: "interrupted" });
+  if (!valid()) return interrupted();
   const { session, scene, entity } = ensureActorInSpace(bot);
   if (entity.mode === "WARP" || session._transitionState) {
     return { success: true, phase: "moving", message: `${bot.characterName} is still moving.` };
@@ -1353,6 +1356,7 @@ async function mineNearestAsteroid(bot, miningModules, approachMeters, marketSta
     for (const entry of candidates) {
       const typeID = Number(entry.state.yieldTypeID) || 0;
       if (!values.has(typeID)) values.set(typeID, await estimateOreValuePerVolume(bot, marketStationID, typeID));
+      if (!valid()) return interrupted();
       entry.marketValuePerVolume = values.get(typeID);
     }
     target = candidates.sort((left, right) =>
@@ -1362,8 +1366,10 @@ async function mineNearestAsteroid(bot, miningModules, approachMeters, marketSta
       Number(left.entity.itemID) - Number(right.entity.itemID))[0] || target;
   }
   if (!target || !target.entity) {
-    return { success: false, message: "No mineable asteroids are available in this belt." };
+    return { success: false, noOre: true, message: "No mineable asteroids are available in this belt." };
   }
+  if (!valid() || scene.getShipEntityForSession(session) !== entity || entity.mode === "WARP" || session._transitionState)
+    return interrupted();
   const asteroid = target.entity;
   const BeyonceService = require("../ship/beyonceService");
   const distanceToAsteroid = getSurfaceDistanceBetweenEntities(entity, asteroid);

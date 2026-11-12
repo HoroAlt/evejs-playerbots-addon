@@ -175,6 +175,9 @@ function setEnabled(enabled) {
 }
 
 function isBusy(characterID) {
+  if (require("./playerBotLocalDefenseAdapter").hasLease(characterID)) return true;
+  const interruptions = require("./playerBotInterruptRuntime");
+  if (interruptions.isBusy(characterID) || interruptions.hasPending(characterID)) return true;
   const operations = require("./playerBotOperationRuntime");
   const operation = operations.getOperation(characterID);
   const retryableColonyReview = operation && operation.kind === "colony" &&

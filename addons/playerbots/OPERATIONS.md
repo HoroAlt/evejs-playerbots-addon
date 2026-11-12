@@ -781,3 +781,7 @@ For a manual rollback, restore the files listed in the install's
 `addons/playerbots`. If the add-on generated the token and no longer needs to
 run, remove only the `EVEJS_PLAYER_BOTS_ADDON_TOKEN` line from `.env`. Keep the
 backup directory until the rollback is confirmed.
+
+## Optional local defense
+
+See [Local defense and safe task resumption](LOCAL_DEFENSE.md) for explicit enablement, responder eligibility, policy settings, safe disengagement and tests. The feature is disabled by default.

@@ -341,6 +341,11 @@ async function handleNavigationJob(job = {}) {
   if (!taskID) return { processed: false, reason: "missing-task-id" };
   const tasks = require("./playerBotTaskRuntime");
   const queuedTask = tasks.getTask(taskID);
+  const interruptions = require("./playerBotInterruptRuntime");
+  if (queuedTask && (interruptions.isBusy(queuedTask.resourceOwnerCharacterID) || interruptions.hasPending(queuedTask.resourceOwnerCharacterID))) {
+    await scheduleNavigationTask(taskID, Date.now() + 1000);
+    return { processed: false, reason: "pilot-emergency-or-step-in-progress" };
+  }
   if (!queuedTask || queuedTask.kind !== "playerbot.space.route" || queuedTask.status !== "queued") {
     return { processed: false, reason: "task-not-queued" };
   }
@@ -442,25 +447,32 @@ async function ensureIndustryCycleStep(characterID, dueAtMs = null) {
   return { scheduled: true, jobID: job.jobID };
 }
 
+const industryWakeLanes = new Map();
 async function wakeIndustryCycleStep(characterID, options = {}) {
   if (!durableScheduler) return;
-  const jobs = await durableScheduler.list({
-    type: INDUSTRY_CYCLE_JOB_TYPE,
-    payload: { characterID: Number(characterID) },
-    states: ["scheduled"],
-  });
-  for (const job of jobs) {
-    if (job && job.type === INDUSTRY_CYCLE_JOB_TYPE && job.state === "scheduled" &&
-        Number(job.payload && job.payload.characterID) === Number(characterID)) {
-      await durableScheduler.cancel(job.jobID);
+  const id=Number(characterID);
+  if(industryWakeLanes.has(id))return industryWakeLanes.get(id);
+  const wake=(async()=>{
+    const dueAtMs=Date.now()+(options.immediate===true?250:1000);
+    const jobs=await durableScheduler.list({type:INDUSTRY_CYCLE_JOB_TYPE,payload:{characterID:id},states:["scheduled","running"]});
+    const current=jobs.filter(j=>j&&j.type===INDUSTRY_CYCLE_JOB_TYPE&&Number(j.payload?.characterID)===id&&
+      ["scheduled","running"].includes(j.state)).sort((a,b)=>a.dueAtMs-b.dueAtMs)[0];
+    if(current){
+      const result=await durableScheduler.wakeEarlier(current.jobID,dueAtMs);
+      if(result&&["scheduled","running"].includes(result.state))return result;
     }
-  }
-  await ensureIndustryCycleStep(characterID, options.immediate === true ? Date.now() + 250 : null);
+    return ensureIndustryCycleStep(id,dueAtMs);
+  })();
+  industryWakeLanes.set(id,wake);
+  try{return await wake;}finally{if(industryWakeLanes.get(id)===wake)industryWakeLanes.delete(id);}
 }
 
 async function ensurePendingIndustryCycles() {
+  require("./playerBotLocalDefenseAdapter").maintain();
   const operationRuntime = require("./playerBotOperationRuntime");
   const cycleRuntime = require("./playerBotIndustryCycleRuntime");
+  // Recover accepted emergency intents before enumerating schedulable work.
+  for (const id of require("./playerBotInterruptRuntime").pendingIDs()) operationRuntime.drainInterruptions(id);
   const cycles = [
     ...(typeof cycleRuntime.listActiveCycleRecords === "function"
       ? cycleRuntime.listActiveCycleRecords() : cycleRuntime.listActiveCycles()),
@@ -468,6 +480,7 @@ async function ensurePendingIndustryCycles() {
       ? operationRuntime.listActiveOperationRecords() : operationRuntime.listActiveOperations()),
   ];
   const activeByCharacter = new Map();
+  for (const id of Object.keys(require("./playerBotLocalDefenseAdapter").snapshot().leases)) activeByCharacter.set(Number(id), { characterID:Number(id) });
   for (const cycle of cycles) {
     const characterID = Math.trunc(Number(cycle && cycle.characterID) || 0);
     if (characterID > 0 && !activeByCharacter.has(characterID)) {
@@ -527,7 +540,11 @@ async function handleIndustryCycleJob(job = {}) {
   const roster = typeof playerBots.getPlanningRoster === "function"
     ? playerBots.getPlanningRoster() : playerBots.listBots();
   const connectionSpace = require("./playerBotSpaceRuntime");
-  if (!connectionSpace.isBotConnectedForWork(characterID, roster)) {
+  // Cleanup must also run outside the connection window; otherwise a disconnected
+  // responder retains its durable lease until its next scheduled login.
+  const connectedForWork = connectionSpace.isBotConnectedForWork(characterID, roster);
+  const rescueStep = await require("./playerBotLocalDefenseAdapter").advance(characterID, { unavailable: !connectedForWork });
+  if (!connectedForWork) {
     const dueAtMs = connectionSpace.nextBotConnectionAtMs(characterID, roster) || Date.now() + 60_000;
     const deferred = await scheduleIndustryCycleStep(characterID, Math.max(Date.now() + 5_000, dueAtMs));
     return { processed: false, deferred: true, reason: "outside-connection-window", nextAttemptAtMs: deferred.dueAtMs };
@@ -535,9 +552,9 @@ async function handleIndustryCycleJob(job = {}) {
   // One step job per bot drives whichever durable operation it is running:
   // a generic operation (haul, mining) or the industry production cycle.
   const operations = require("./playerBotOperationRuntime");
-  const result = operations.hasActiveOperation(characterID)
+  const result = rescueStep || (operations.hasActiveOperation(characterID)
     ? await operations.advanceOperation(characterID)
-    : await require("./playerBotIndustryCycleRuntime").advanceCycle(characterID);
+    : await require("./playerBotIndustryCycleRuntime").advanceCycle(characterID));
   if (result && result.done) {
     // Chain straight into the next job instead of idling until the next
     // five-minute autonomy cycle.

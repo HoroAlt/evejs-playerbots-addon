@@ -122,7 +122,7 @@ def main() -> int:
         copy_file(ADDON_SOURCE / "verify.py", stage / "verify.py")
         copy_file(ROOT / "addons/playerbots/compose.override.yaml", stage / "compose.override.yaml")
         copy_file(ADDON_SOURCE / "README.md", stage / "README.md")
-        for name in ("INSTALLATION.md", "OPERATIONS.md", "TROUBLESHOOTING.md", "GUIDE.md", "LICENSE", "THIRD_PARTY_NOTICES.md"):
+        for name in ("INSTALLATION.md", "OPERATIONS.md", "TROUBLESHOOTING.md", "GUIDE.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "LOCAL_DEFENSE.md"):
             copy_file(ADDON_SOURCE / name, stage / name)
         copy_file(ROOT / "doc/COMMUNITY_FITTINGS.md", stage / "COMMUNITY_FITTINGS.md")
         copy_file(ROOT / "doc/PLAYERBOTS_CAPACITY_MODEL.md", stage / "PLAYERBOTS_CAPACITY_MODEL.md")

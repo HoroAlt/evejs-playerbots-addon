@@ -380,6 +380,19 @@ createOrderedProcessHost({
       armTimer();
       return true;
     }
+    if (command === "wakeEarlier") {
+      // Check and update inside the sole scheduler owner. A job claimed between
+      // a caller's list and this command keeps its live lease and handler.
+      const jobID = normalizeJobID(payload.jobID);
+      const dueAtMs = normalizeDueAtMs(payload.dueAtMs);
+      const current = readJob(jobID);
+      if (!current) return null;
+      if (current.state !== "scheduled" || current.dueAtMs <= dueAtMs) return cloneValue(current);
+      const next = { ...current, dueAtMs, updatedAtMs: Date.now() };
+      writeJob(jobID, next);
+      armTimerAt(dueAtMs);
+      return cloneValue(next);
+    }
     if (command === "renewLease") {
       const current = requireLease(payload);
       const nowMs = Date.now();
