@@ -1079,6 +1079,7 @@ async function buyFromBestAsk(cycle, bot, typeID, neededUnits, kind, atStationID
   cycle.status = "active";
   saveCycle(cycle);
   const trade = await getTrade().buy(bot.characterName, typeID, quantity, ask.price);
+  const purchaseAttempt = { ...cycle.pending };
   const observed = settlePendingPurchase(cycle);
   if (!trade.success && trade.outcomeUnknown) {
     applyPurchase(cycle, typeID, observed.bought, observed.spent, kind);
@@ -1090,7 +1091,14 @@ async function buyFromBestAsk(cycle, bot, typeID, neededUnits, kind, atStationID
       saveCycle(cycle);
       return { delayMs: STEP_DELAY_MS };
     }
-    return block(cycle, "review", `Uncertain purchase of ${typeID}: observed ${observed.bought} units for ${observed.spent.toFixed(2)} ISK. Review it before using /playerbots industry cycle resume.`);
+    cycle.lastPurchaseReview = {
+      ...purchaseAttempt,
+      observedBought: observed.bought,
+      observedSpent: observed.spent,
+      authorityMessage: String(trade.message || "Market outcome was not confirmed").slice(0, 600),
+      recordedAt: new Date().toISOString(),
+    };
+    return block(cycle, "review", `Uncertain purchase of ${typeID}: observed ${observed.bought} units for ${observed.spent.toFixed(2)} ISK. ${cycle.lastPurchaseReview.authorityMessage} Review it before using /playerbots industry cycle resume.`);
   }
   cycle.pending = null;
   applyPurchase(cycle, typeID, observed.bought, observed.spent, kind);
