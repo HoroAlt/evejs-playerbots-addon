@@ -1501,7 +1501,7 @@ const SHIP_LADDER = Object.freeze({
     },
     {
       name: "Dominix combat fit (site tier 5)", hullTypeID: 645,
-      moduleTypeIDs: ["Damage Control I", "Drone Damage Amplifier I", "Drone Damage Amplifier I", "Drone Damage Amplifier I", "Shield Power Relay I", "Shield Power Relay I", "Shield Power Relay I", "Large Shield Extender I", "Large Shield Extender I", "Large Shield Extender I", "EM Shield Amplifier II", "EM Shield Amplifier II", "Thermal Shield Amplifier II"],
+      moduleTypeIDs: ["Damage Control I", "Drone Damage Amplifier I", "Drone Damage Amplifier I", "Drone Damage Amplifier I", "Shield Power Relay I", "Shield Power Relay I", "Shield Power Relay I", "Large Shield Extender I", "Large Shield Extender I", "Large Shield Extender I", "EM Shield Amplifier II", "Thermal Shield Amplifier II"],
       droneTypeIDs: ["Infiltrator I", "Hammerhead I", "Vespa I", "Valkyrie I", "Hammerhead I"],
       droneDamageByName: { "Infiltrator I": "em", "Hammerhead I": "thermal", "Vespa I": "kinetic", "Valkyrie I": "explosive" },
       maxSiteDifficulty: 5, maxWaveHostiles: 20, maxWaveThreatScore: 60, maxSiteWaves: 12,
@@ -2118,11 +2118,79 @@ function failSavedFitting(operation, bot, status, reason, itemStore) {
   return block(operation, status, reason);
 }
 
+function upgradeSlotError(operation) {
+  const fitting = require("../fitting/liveFittingState");
+  const counts = new Map();
+  for (const typeID of operation.moduleTypeIDs || []) {
+    const family = fitting.getRequiredSlotFamily(typeID);
+    if (!family) return `Module ${typeID} has no supported fitting slot.`;
+    counts.set(family, (counts.get(family) || 0) + 1);
+  }
+  for (const [family, count] of counts) {
+    const available = fitting.getSlotFlagsForFamily(family, operation.hullTypeID, []).length;
+    if (count > available) return `${operation.name} requires ${count} ${family} slots, but the hull has ${available}.`;
+  }
+  return null;
+}
+
+function migrateLegacyDominixFit(operation) {
+  if (operation.kind !== "upgrade" || operation.role !== "security" || Number(operation.hullTypeID) !== 645) return;
+  const corrected = resolveShipLadderRung(SHIP_LADDER.security.find((rung) => rung.hullTypeID === 645));
+  const extraType = resolveLadderTypeID("EM Shield Amplifier II");
+  const sorted = (types) => [...types].map(Number).sort((a, b) => a - b).join(",");
+  if (sorted(operation.moduleTypeIDs || []) !== sorted([...corrected.moduleTypeIDs, extraType])) return;
+  operation.moduleTypeIDs = [...corrected.moduleTypeIDs];
+  operation.lastError = null;
+  record(operation, "Corrected the legacy Dominix fit to five mid slots; owned surplus modules will remain in the station hangar.");
+  saveOperation(operation);
+}
+
+function reconcileDominixMidSlots(operation, bot, session) {
+  if (operation.kind !== "upgrade" || operation.role !== "security" || Number(operation.hullTypeID) !== 645) return null;
+  const itemStore = require("../inventory/itemStore");
+  const fitting = require("../fitting/liveFittingState");
+  const typeID = resolveLadderTypeID("EM Shield Amplifier II");
+  const wanted = (operation.moduleTypeIDs || []).filter((id) => Number(id) === typeID).length;
+  if (wanted !== 1) return null;
+  const shipID = Number(session.shipID);
+  const stationID = Number(session.stationID || session.structureID);
+  if (!stationID || stationID !== Number(operation.marketStationID) || Number(session.shipTypeID) !== 645) {
+    return "The Dominix must be docked at its fitting station before repairing its legacy fit.";
+  }
+  const surplus = itemStore.listCharacterItems(bot.characterID, { locationID: shipID, typeID })
+    .filter((item) => fitting.isFittedModuleItem(item)).sort((a, b) => Number(a.flagID) - Number(b.flagID)).slice(wanted);
+  for (const module of surplus) {
+    const broker = new (require("../inventory/invBrokerService"))();
+    const previous = session.currentBoundObjectID;
+    try {
+      const bound = broker.Handle_GetInventory([stationID], session, null);
+      session.currentBoundObjectID = bound.value.value[0];
+      broker.Handle_Add([Number(module.itemID), shipID], session, { flag: itemStore.ITEM_FLAGS.HANGAR, qty: 1 });
+    } catch (error) {
+      return `Could not return the surplus Dominix resistance module to the hangar: ${getSpace().describeError(error)}`;
+    } finally {
+      session.currentBoundObjectID = previous;
+    }
+    const moved = itemStore.findItemById(Number(module.itemID));
+    if (!moved || Number(moved.locationID) !== stationID || Number(moved.flagID) !== itemStore.ITEM_FLAGS.HANGAR) {
+      return "The inventory service did not return the surplus Dominix module to the station hangar.";
+    }
+    record(operation, `Returned surplus Dominix module ${module.itemID} to station ${stationID}; the ship and module are preserved.`);
+    saveOperation(operation);
+  }
+  return null;
+}
+
 async function advanceUpgrade(operation, bot) {
   const inventory = getInventory();
   const itemStore = require("../inventory/itemStore");
   if (operation.pending && operation.pending.action === "buy") {
     return block(operation, "review", "A purchase was not confirmed after a restart; check the hangar and wallet before resuming the operation.");
+  }
+  migrateLegacyDominixFit(operation);
+  if (operation.kind === "upgrade") {
+    const slotError = upgradeSlotError(operation);
+    if (slotError) return block(operation, "blocked", slotError);
   }
   // A capsule-recovery or security upgrade can already be active when the
   // corporation receives its first-war grant. Extend its existing spend cap
@@ -2401,6 +2469,8 @@ async function advanceUpgrade(operation, bot) {
   if (operation.stage === "fit") {
     const session = getSpace().getActorSession(bot);
     const failFit = (status, reason) => failSavedFitting(operation, bot, status, reason, itemStore);
+    const legacyFitError = reconcileDominixMidSlots(operation, bot, session);
+    if (legacyFitError) return failFit("holding", legacyFitError);
     const shipID = Number(session.shipID) || 0;
     const fitting = require("../fitting/liveFittingState");
     const fitted = itemStore.listCharacterItems(bot.characterID, { locationID: shipID })
@@ -2429,11 +2499,20 @@ async function advanceUpgrade(operation, bot) {
       const flag = plannedSlots
         ? Number(planned.flagID)
         : candidates.find((candidate) => !occupied.has(Number(candidate)));
+      if (!Number.isSafeInteger(flag) || flag <= 0) {
+        return failFit("blocked", `No available ${family} slot for ${itemType && itemType.name || typeID} on ${operation.name}.`);
+      }
       if (plannedSlots && !candidates.includes(flag)) {
         return failFit("blocked", `Saved slot ${flag} is unavailable for ${itemType && itemType.name || typeID} on ${operation.name}.`);
       }
       if (occupied.has(flag)) {
         return failFit("blocked", `Saved fitting slot ${flag} is already occupied on ${operation.name}.`);
+      }
+      if (inventory.countCargo(bot, typeID) > 0) {
+        const unloaded = inventory.unloadCargo(bot, typeID);
+        if (!unloaded.success || inventory.countCargo(bot, typeID) > 0) {
+          return failFit("holding", `Could not unload carried fitting module ${typeID} into the station hangar.`);
+        }
       }
       const stack = inventory.listHangar(bot, operation.marketStationID, typeID)[0];
       if (!stack) return failFit("holding", `Missing fitted module ${typeID} in the station hangar.`);
