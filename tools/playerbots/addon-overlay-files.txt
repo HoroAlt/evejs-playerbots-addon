@@ -57,3 +57,4 @@ server/src/space/runtime/targetDamageApplication.js
 server/src/space/transitions.js
 server/src/space/destiny/identity/entityID.js
 server/src/utils/deploymentHealthcheck.js
+server/src/services/mining/miningNpcOperations.js

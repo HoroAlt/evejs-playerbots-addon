@@ -1,0 +1,7 @@
+# Native integration validation
+
+A real mining route acquired ore through native laser cycles and delivered 667 units to the station, matching the job ledger. Empty return did not count a productive trip. Unsafe-base relocation used native navigation and reached a new safe station while a territorial assignment retained its designated base. Productive mining used a quiet test configuration with belt-rat spawning disabled; combat is outside this PR.
+
+Each case used original EveJS 261108.1 server sources plus the unmodified v0.2.142 overlay and only this PR. Tests ran in a disposable, network-isolated runtime with private SQLite snapshots. No production services or data were used.
+
+The snapshot-driven native harness remains private because its historical saved data is not redistributable as a generic fixture. The included controlled-dependency regression test is portable and can also read a compatible checkout via EVEJS_SOURCE_ROOT. Results establish representative integration behavior; they do not certify all gameplay combinations or long-term stability.
