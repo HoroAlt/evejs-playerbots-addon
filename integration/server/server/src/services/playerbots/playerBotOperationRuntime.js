@@ -2186,6 +2186,39 @@ function failSavedFitting(operation, bot, status, reason, itemStore) {
   return block(operation, status, reason);
 }
 
+function findReusableUpgradeHull(bot, operation) {
+  const store = require("../inventory/itemStore");
+  const docked = Number(getSpace().getActorSession(bot).stationID);
+  const routes = new Map();
+  const fitting = require("../fitting/liveFittingState");
+  let best = null;
+  for (const hull of store.listCharacterItems(bot.characterID, {
+    typeID: operation.hullTypeID, flagID: store.ITEM_FLAGS.HANGAR,
+  })) {
+    const station = worldData.getStationByID(Number(hull.locationID));
+    if (!station) continue;
+    const systemID = Number(station.solarSystemID);
+    let hops = 0;
+    if (Number(hull.locationID) !== docked) {
+      if (!routes.has(systemID)) routes.set(systemID, getSpace().previewSystemRoute(bot, systemID));
+      const route = routes.get(systemID);
+      if (!route.success || route.risk?.lowsecSystemIDs?.length || route.risk?.nullsecSystemIDs?.length) continue;
+      hops = 1 + route.hops;
+    }
+    const missing = [...operation.moduleTypeIDs];
+    for (const item of store.listCharacterItems(bot.characterID, { locationID: hull.itemID })) {
+      if (!fitting.isFittedModuleItem(item)) continue;
+      const index = missing.indexOf(Number(item.typeID));
+      if (index >= 0) missing.splice(index, 1);
+    }
+    if (!best || missing.length < best.missing || (missing.length === best.missing && hops < best.hops)) {
+      best = { missing: missing.length, hops, hull };
+      if (!best.missing && !hops) break;
+    }
+  }
+  return best && best.hull;
+}
+
 async function advanceUpgrade(operation, bot) {
   const inventory = getInventory();
   const itemStore = require("../inventory/itemStore");
@@ -2230,6 +2263,40 @@ async function advanceUpgrade(operation, bot) {
     return operation.kind === "fit"
       ? block(operation, "blocked", `Required skills are missing to fly or fit the saved ${operation.name} fitting; the bot keeps its previous ship.`)
       : deferUpgradeForSkills(operation, bot);
+  }
+  if (operation.kind === "upgrade" && operation.stage === "buy" && !operation.replenishOnly) {
+    const session = getSpace().getActorSession(bot);
+    if (Number(session.shipTypeID) === Number(operation.hullTypeID)) {
+      operation.replenishOnly = true;
+      saveOperation(operation);
+    } else {
+      const hull = findReusableUpgradeHull(bot, operation);
+      if (hull) {
+        operation.reuseShipID = Number(hull.itemID);
+        operation.reuseStationID = Number(hull.locationID);
+        operation.stage = "collect-hull";
+        saveOperation(operation);
+      }
+    }
+  }
+  if (operation.stage === "collect-hull") {
+    const step = await travelToStation(operation, bot, operation.reuseStationID);
+    if (step) return step;
+    const session = getSpace().getActorSession(bot);
+    if (Number(session.shipID) !== operation.reuseShipID) {
+      const hull = inventory.listHangar(bot, operation.reuseStationID, operation.hullTypeID)
+        .find(item => Number(item.itemID) === operation.reuseShipID);
+      if (!hull) return block(operation, "blocked", "Reserved hull is no longer in the owner's station hangar.");
+      operation.previousShipID = Number(session.shipID);
+      const boarded = boardShip(bot, hull);
+      if (boarded.error) return block(operation, "blocked", boarded.error);
+    }
+    operation.targetShipID = operation.reuseShipID;
+    operation.replenishOnly = true;
+    operation.stage = "to-market";
+    record(operation, `Reusing owned ship ${operation.targetShipID} from station ${operation.reuseStationID}.`);
+    saveOperation(operation);
+    return { delayMs: STEP_DELAY_MS };
   }
   if (operation.stage === "buy") {
     const station = operation.marketStationID;
