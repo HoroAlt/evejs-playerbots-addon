@@ -1945,7 +1945,10 @@ function findDeploymentReposition(bot, typeID, excludedTargetIDs = []) {
         Number(ship.position.z || 0) - Number(candidate.targetPosition.z || 0),
       ),
     }))
-    .filter((candidate) => candidate.distance >= MIN_DEPLOYMENT_REPOSITION_DISTANCE)
+    .filter((candidate) => candidate.distance >= MIN_DEPLOYMENT_REPOSITION_DISTANCE &&
+      require("../dynamic/essAccessRuntime").evaluateEssDeadspaceWarp(
+        attached.scene, ship, candidate.targetPosition, { stopDistance: 0 },
+      ).action === "allow")
     .sort((left, right) => left.distance - right.distance || left.targetID - right.targetID);
   const solarSystemID = Number(attached.session.solarsystemid || attached.session.solarsystemid2);
   for (const candidate of candidates) {
