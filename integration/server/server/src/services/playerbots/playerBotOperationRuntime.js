@@ -4613,6 +4613,10 @@ function startCombat(botQuery, mode = "security", options = {}) {
   if (!["security", "piracy", "war", "nullsec-conflict"].includes(normalizedMode)) {
     return { success: false, message: "Combat mode must be security, war, piracy, or nullsec-conflict." };
   }
+  if (normalizedMode === "war" &&
+      !require("../corporation/warRuntimeState").hasActiveWarForCharacter(bot.characterID)) {
+    return { success: false, message: "War patrol requires an active war; declarations still in the waiting period only allow preparation." };
+  }
   const shipRole = ["war", "nullsec-conflict"].includes(normalizedMode) ? "security" : normalizedMode;
   const hasCombatFit = hasRoleShipFit(bot, shipRole);
   // The war director deliberately mobilizes any cross-trained pilot whose
@@ -4691,7 +4695,7 @@ function startCombat(botQuery, mode = "security", options = {}) {
   } else if (miningEscortTarget) target = miningEscortTarget;
   else if (normalizedMode === "nullsec-conflict") target = conflictTarget;
   else if (normalizedMode === "piracy") target = combat.findNearestPirateBase(bot);
-  else if (warTarget.success) target = warTarget;
+  else if (normalizedMode === "war") target = warTarget;
   else if (anomalyTarget.success) target = anomalyTarget;
   else {
     const currentSystemID = Number((getCharacterRecord(bot.characterID) || {}).solarSystemID) || 0;

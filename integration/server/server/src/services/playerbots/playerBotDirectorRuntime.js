@@ -1220,7 +1220,11 @@ function chooseAssignment(bot, options = {}) {
           warMobilizationSupportID: warSupport.supportID,
         };
       }
-      if (operations.hasRoleShipFit(bot, "security")) return { kind: "combat", mode: "war" };
+      // Mobilization also covers the declaration wait. Training/fitting may
+      // proceed then, but patrols require a live war and the normal cooldown.
+      if (require("../corporation/warRuntimeState").hasActiveWarForCharacter(bot.characterID) &&
+          !combatCoolingDown(operations.getOperation(bot.characterID)) &&
+          operations.hasRoleShipFit(bot, "security")) return { kind: "combat", mode: "war" };
     }
   }
   if (operations.nextPlanetaryLaunch(bot)) return { kind: "pi-collect" };

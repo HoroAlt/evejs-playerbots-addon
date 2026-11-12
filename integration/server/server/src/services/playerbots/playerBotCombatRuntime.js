@@ -1086,6 +1086,17 @@ async function advanceCombat(operation, bot, kit) {
   const capsule = Number(character.shipTypeID) === 670;
   const capsuleSafeStages = new Set(["return", "to-market", "market-sell", "corp-share"]);
 
+  // Old saves may already contain a waiting-period war patrol. Settle that
+  // trip normally instead of resuming another empty belt visit after update.
+  if (operation.mode === "war" && !operation.defensiveTargetID &&
+      !(operation.stage === "loot" && operation.lastDestroyedTargetID) &&
+      !capsuleSafeStages.has(operation.stage) &&
+      !require("../corporation/warRuntimeState").hasActiveWarForCharacter(bot.characterID)) {
+    module.exports.requestSafeRetreat(operation, bot, "The war is not active; returning to station until a legal patrol opportunity exists.");
+    record(operation, kit, operation.withdrawReason);
+    return { delayMs: 5_000 };
+  }
+
   if (capsule && ["return", "to-market", "market-sell"].includes(operation.stage)) {
     const economy = require("./playerBotEconomyRuntime");
     const homeInJita = economy.isJitaStation(operation.homeStationID);
