@@ -1316,7 +1316,10 @@ function chooseAssignment(bot, options = {}) {
     return { kind: "industry", runs: INDUSTRY_MAX_RUNS, maxSpend,
       ...(facility ? { facilityID: facility.facilityID } : {}) };
   }
-  if (options.prioritizeProductiveWork === true) {
+  // Complete a mining assignment after fitting its ship before reconsidering a combat hull.
+  if (options.prioritizeProductiveWork === true ||
+      (lastOperation?.kind === "upgrade" && lastOperation.role === "mining" &&
+       lastOperation.status === "completed" && operations.hasRoleShipFit(bot, "mining"))) {
     return chooseMiningAssignment(bot, options);
   }
   // Security, piracy and sovereignty pilots first acquire the hull required

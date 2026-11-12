@@ -869,6 +869,13 @@ async function advanceMining(operation, bot) {
     record(operation, "Updated mining safety state; clearing legacy belt alarms that were not tied to a destroyed escort.");
     saveOperation(operation);
   }
+  if (operation.trips > 0 && !Object.values(operation.oreMined || {}).some(units => units > 0)) {
+    operation.trips = 0;
+    if (["next", "refine", "sell", "load-output", "corp-share"].includes(operation.stage)) {
+      operation.stage = "to-home";
+    }
+    saveOperation(operation);
+  }
   if (operation.optimizeMarketDestination === undefined) operation.optimizeMarketDestination = true;
   if (operation.marketStationID === undefined ||
       require("./playerBotEconomyRuntime").isJitaStation(operation.marketStationID)) {
@@ -937,19 +944,38 @@ async function advanceMining(operation, bot) {
   if (operation.stage === "to-home") {
     const step = await travelToStation(operation, bot, operation.homeStationID);
     if (step) return step;
-    operation.stage = operation.trips > 0 ? "unload" : "undock";
+    operation.stage = operation.relocatingMiningBase || operation.trips === 0 ? "undock" : "unload";
+    delete operation.relocatingMiningBase;
     saveOperation(operation);
     return { delayMs: STEP_DELAY_MS };
   }
   if (operation.stage === "undock") {
     if (Number((getCharacterRecord(bot.characterID) || {}).shipTypeID) === 670 || !getMiningModules(bot).length) {
-      return finish(operation, "No mining ship is available (capsule or no fitted miner); the director will assign another ship.");
+      return block(operation, "blocked", "No mining ship is available (capsule or no fitted miner); the director must assign another ship.");
     }
     const belts = worldData.getAsteroidBeltsForSystem(stationSystemID(operation.homeStationID)) || [];
     if (!belts.length) return block(operation, "blocked", `The system for ${operation.homeStationID} has no asteroid belts.`);
     const belt = pickBelt(operation);
     if (!belt) {
       const now = Date.now();
+      if (operation.autonomous === true && operation.territorialOperation !== true) {
+        const currentSystemID = stationSystemID(operation.homeStationID);
+        operation.dangerousMiningSystems = Object.fromEntries(
+          Object.entries(operation.dangerousMiningSystems || {}).filter(([, at]) => now - Number(at) < BELT_DANGER_MS),
+        );
+        operation.dangerousMiningSystems[currentSystemID] = now;
+        const excludedSystems = [...Object.keys(operation.dangerousMiningSystems).map(Number), 30000142];
+        const alternative = findNearestMiningStation(currentSystemID, 0.45, 15, excludedSystems);
+        if (alternative) {
+          clearRouteTask(operation);
+          operation.homeStationID = alternative.stationID;
+          operation.relocatingMiningBase = true;
+          operation.stage = "to-home";
+          record(operation, `All local belts are unsafe; moving the mining base from system ${currentSystemID} to station ${alternative.stationID} in system ${alternative.systemID} over ${alternative.hops} high-security jump(s).`);
+          saveOperation(operation);
+          return { delayMs: STEP_DELAY_MS };
+        }
+      }
       const nextSafeAt = Math.min(...belts.map((entry) =>
         Number(operation.dangerousBelts && operation.dangerousBelts[String(entry.itemID)] || 0) + BELT_DANGER_MS + 1,
       ));
@@ -1123,7 +1149,33 @@ async function advanceMining(operation, bot) {
     }
     const cargoBeforeMining = oreInCargo(bot);
     if (!operation.miningCargoSnapshot) operation.miningCargoSnapshot = cargoBeforeMining;
-    const result = await space.mineNearestAsteroid(bot, miningModules, MINING_APPROACH_METERS, operation.homeStationID);
+    const startingShip = getCharacterRecord(bot.characterID) || {};
+    const shipID = Number(startingShip.shipID);
+    const systemID = Number(startingShip.solarSystemID);
+    const isCurrent = () => {
+      const liveBot = resolveBotByID(bot.characterID);
+      const liveShip = getCharacterRecord(bot.characterID) || {};
+      const latest = getOperation(bot.characterID);
+      return Boolean(liveBot) &&
+        liveBot.status !== "paused" && liveBot.autonomyPaused !== true &&
+        Number(liveShip.shipID) === shipID && Number(liveShip.solarSystemID) === systemID &&
+        Number(liveShip.shipTypeID) !== 670 && !liveShip.stationID && !liveShip.structureID &&
+        latest?.operationID === operation.operationID && latest.stage === "mining" &&
+        ACTIVE_STATUSES.has(latest.status) && !latest.incomingThreat;
+    };
+    if (!isCurrent()) return { delayMs: 1000, interrupted: true };
+    const miningRead = space.mineNearestAsteroid(bot, miningModules, MINING_APPROACH_METERS,
+      operation.homeStationID, { isCurrent });
+    const result = await miningRead;
+    // Do not write any stale mining snapshot, even if a dependency ignores cancellation.
+    if (result.interrupted || !isCurrent()) return { delayMs: 1000, interrupted: true };
+    if (result.noOre) {
+      space.stopMining(bot);
+      operation.stage = "return";
+      record(operation, result.message);
+      saveOperation(operation);
+      return { delayMs: STEP_DELAY_MS };
+    }
     if (!result.success) return block(operation, "holding", result.message);
     operation.lockFailures = result.lockFailed ? (Number(operation.lockFailures) || 0) + 1 : 0;
     if (operation.lockFailures >= 3) {
@@ -1188,8 +1240,24 @@ async function advanceMining(operation, bot) {
   if (operation.stage === "unload") {
     const before = oreInCargo(bot);
     const result = inventory.unloadCargo(bot);
+    if (!result.success) return block(operation, "holding", result.message);
+    const delivered = {};
+    for (const [typeID, units] of Object.entries(before)) {
+      const moved = Math.min(units, Number(result.unloaded[typeID]) || 0);
+      if (moved > 0) delivered[typeID] = moved;
+    }
+    addCounts(operation.oreMined, delivered);
+    if (!Object.keys(delivered).length) {
+      if (operation.shipLost) return block(operation, "blocked", "Mining ship lost before ore could be unloaded.");
+      operation.dangerousBelts = { ...operation.dangerousBelts, [operation.beltID]: Date.now() };
+      operation.stage = "undock";
+      operation.miningCargoSnapshot = {};
+      operation.miningPhaseKey = null;
+      record(operation, "Empty return; no productive trip counted. Selecting another belt after docking.");
+      saveOperation(operation);
+      return { delayMs: STEP_DELAY_MS };
+    }
     operation.trips += 1;
-    addCounts(operation.oreMined, before);
     operation.miningCargoSnapshot = {};
     operation.miningPhaseKey = null;
     record(operation, `Trip ${operation.trips}: unloaded ore ${JSON.stringify(result.unloaded)}.`);
