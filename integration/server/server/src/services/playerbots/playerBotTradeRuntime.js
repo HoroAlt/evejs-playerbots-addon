@@ -1114,7 +1114,7 @@ async function buy(botQuery, typeID, quantity, maxUnitPrice) {
       outcomeUnknown: true,
       observedBought: Math.max(0, unitsAfter - unitsBefore),
       observedSpent: Math.max(0, balanceBefore - balanceAfter),
-      message: `Could not confirm whether the market completed ${context.bot.characterName}’s purchase. Check the hangar and wallet before retrying: ${String(error && error.message || error).slice(0, 180)}.`,
+      message: `Could not confirm whether the market completed ${context.bot.characterName}’s purchase. Check the hangar and wallet before retrying: ${getMarketAuthorityErrorMessage(error).slice(0, 180)}.`,
     };
   } finally {
     activeTradeBots.delete(botID);
