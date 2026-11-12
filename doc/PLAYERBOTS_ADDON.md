@@ -17,7 +17,7 @@ pause while a qualified escort responds.
 
 ## Source and release artifact
 
-The current public test package is `0.2.142`. The versioned ZIP in `dist/` is
+The current public test package is `0.2.143`. The versioned ZIP in `dist/` is
 the standard artifact to install and redistribute; commit it with matching
 source and documentation. The source checkout alone is not the installation
 artifact.
@@ -30,7 +30,7 @@ remaining live acceptance gates.
 
 ## Install
 
-The distributable archive is `dist/evejs-playerbots-addon-v0.2.142.zip`. Extract it and run:
+The distributable archive is `dist/evejs-playerbots-addon-v0.2.143.zip`. Extract it and run:
 
 ```sh
 EVEJS_SOURCE="/path/to/your EveJS checkout"

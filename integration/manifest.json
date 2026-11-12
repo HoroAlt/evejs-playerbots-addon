@@ -76,8 +76,8 @@
     },
     "server/src/services/chat/chatCommands.js": {
       "baseSha256": "e8d294cc1a971f7b1a5cb3b42c7a6d28ce0ffcac1885fdae811240f27b662805",
-      "sourceSha256": "ab0a0ac00bdc5df72e79c17ed695929320f3189a44442bc8ea945324a8824f1e",
-      "overlaySha256": "ab0a0ac00bdc5df72e79c17ed695929320f3189a44442bc8ea945324a8824f1e",
+      "sourceSha256": "b4ae94fb763b61331448212b457bc651632adf1fdd762e4ed50c1c6d71dc2ea1",
+      "overlaySha256": "b4ae94fb763b61331448212b457bc651632adf1fdd762e4ed50c1c6d71dc2ea1",
       "subsystem": "chat-commands"
     },
     "server/src/services/chat/commandSessionEffects.js": {
@@ -202,8 +202,8 @@
     },
     "server/src/services/mining/miningNpcOperations.js": {
       "baseSha256": "5ce327785991ee6ffb18b523e4af1862cccc93e2be6e13e09bdefc2855aff4cd",
-      "sourceSha256": "88f261d6379d8f479d0a98eaa47baf088a24f4987dc1c029cd246b5b49a1f909",
-      "overlaySha256": "88f261d6379d8f479d0a98eaa47baf088a24f4987dc1c029cd246b5b49a1f909",
+      "sourceSha256": "41b9e088362ded900539c908f3573a7108e6a0a7931e92015b756191a63cf947",
+      "overlaySha256": "41b9e088362ded900539c908f3573a7108e6a0a7931e92015b756191a63cf947",
       "subsystem": "platform"
     },
     "server/src/services/notifications/notificationState.js": {
@@ -256,8 +256,8 @@
     },
     "server/src/services/playerbots/playerBotAutonomyRuntime.js": {
       "baseSha256": null,
-      "sourceSha256": "e1c9677635d1a64fa64cd09b8f19654e9228c2b55aade67ebdbaa64d8f1bfa1d",
-      "overlaySha256": "e1c9677635d1a64fa64cd09b8f19654e9228c2b55aade67ebdbaa64d8f1bfa1d",
+      "sourceSha256": "c0bb25c041a90aaacfb61c00fe6f3ca3b6f86a64b1817e5f5f3e7354a1be6366",
+      "overlaySha256": "c0bb25c041a90aaacfb61c00fe6f3ca3b6f86a64b1817e5f5f3e7354a1be6366",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotCapacityRuntime.js": {
@@ -298,8 +298,8 @@
     },
     "server/src/services/playerbots/playerBotCombatRuntime.js": {
       "baseSha256": null,
-      "sourceSha256": "7e9ff9dd5bf4eb7f01945c8733680bf59bfceb2842834e7ebbaf08b6af9df5fa",
-      "overlaySha256": "7e9ff9dd5bf4eb7f01945c8733680bf59bfceb2842834e7ebbaf08b6af9df5fa",
+      "sourceSha256": "b16946595395dd418417f36124490595049534a701b369dda9edfa288e4b6ed7",
+      "overlaySha256": "b16946595395dd418417f36124490595049534a701b369dda9edfa288e4b6ed7",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotConfigurationRuntime.js": {
@@ -326,10 +326,22 @@
       "overlaySha256": "b2dd380d77c6400ea2a5d93e54b07cf4605f369a38cb8dbcf4165d7942d33087",
       "subsystem": "playerbots-core"
     },
+    "server/src/services/playerbots/playerBotDefenseAssessment.js": {
+      "baseSha256": null,
+      "sourceSha256": "fd935cf5ea6defb4b3d8cac5d2c7e3e28cc4d41201f09de5e00b9c4be81629f4",
+      "overlaySha256": "fd935cf5ea6defb4b3d8cac5d2c7e3e28cc4d41201f09de5e00b9c4be81629f4",
+      "subsystem": "playerbots-core"
+    },
+    "server/src/services/playerbots/playerBotDefensePolicy.js": {
+      "baseSha256": null,
+      "sourceSha256": "134f32910f7b00b1d0bb89cb4f126f3c1ffb5a0d260cb83053076fd6847a00e0",
+      "overlaySha256": "134f32910f7b00b1d0bb89cb4f126f3c1ffb5a0d260cb83053076fd6847a00e0",
+      "subsystem": "playerbots-core"
+    },
     "server/src/services/playerbots/playerBotDirectorRuntime.js": {
       "baseSha256": null,
-      "sourceSha256": "8799e619736603bfb80b67b7f2975894192614e982b0f8a5f79b2f57ba0f5400",
-      "overlaySha256": "8799e619736603bfb80b67b7f2975894192614e982b0f8a5f79b2f57ba0f5400",
+      "sourceSha256": "2b47ecbbb0394b40a1a37b4b5c8020aa404adcc26f8ef8ca16a23eb0c8c3c1f5",
+      "overlaySha256": "2b47ecbbb0394b40a1a37b4b5c8020aa404adcc26f8ef8ca16a23eb0c8c3c1f5",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotEconomyRuntime.js": {
@@ -352,8 +364,8 @@
     },
     "server/src/services/playerbots/playerBotIndustryCycleRuntime.js": {
       "baseSha256": null,
-      "sourceSha256": "d98e9f73a971c6842806e95268ce93487aaea7529a13f04346fc7773753bb44e",
-      "overlaySha256": "d98e9f73a971c6842806e95268ce93487aaea7529a13f04346fc7773753bb44e",
+      "sourceSha256": "f8cf94f02e163bce655b550a2e8e096ad7e92b4ff9abcd7c43e0beb5bb150d1b",
+      "overlaySha256": "f8cf94f02e163bce655b550a2e8e096ad7e92b4ff9abcd7c43e0beb5bb150d1b",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotIndustryRuntime.js": {
@@ -362,10 +374,40 @@
       "overlaySha256": "8dc2b4b9f8f4ffe8f6d17404664ec2439b8f874ba9a62b753bb433e6bde6fd30",
       "subsystem": "playerbots-core"
     },
+    "server/src/services/playerbots/playerBotInterruptRuntime.js": {
+      "baseSha256": null,
+      "sourceSha256": "d68e3d38c2bba9a0272ece908c8169aed29def9135f3227812503bb2ca6d1977",
+      "overlaySha256": "d68e3d38c2bba9a0272ece908c8169aed29def9135f3227812503bb2ca6d1977",
+      "subsystem": "playerbots-core"
+    },
     "server/src/services/playerbots/playerBotInventoryRuntime.js": {
       "baseSha256": null,
       "sourceSha256": "1563ae64d6c12b5f929ac24b6888f860937e34f09a08c38d2dece812ead90e1e",
       "overlaySha256": "1563ae64d6c12b5f929ac24b6888f860937e34f09a08c38d2dece812ead90e1e",
+      "subsystem": "playerbots-core"
+    },
+    "server/src/services/playerbots/playerBotLocalDefenseAdapter.js": {
+      "baseSha256": null,
+      "sourceSha256": "c52915f6bf6614da96101f941adcf10497b9102ba12b7118c4f9b4b77ae0f331",
+      "overlaySha256": "c52915f6bf6614da96101f941adcf10497b9102ba12b7118c4f9b4b77ae0f331",
+      "subsystem": "playerbots-core"
+    },
+    "server/src/services/playerbots/playerBotLocalDefenseCommands.js": {
+      "baseSha256": null,
+      "sourceSha256": "12a78e52a0e3881eb53037a0ebd4ef619cb393360017064b10985a2786fc00fc",
+      "overlaySha256": "12a78e52a0e3881eb53037a0ebd4ef619cb393360017064b10985a2786fc00fc",
+      "subsystem": "playerbots-core"
+    },
+    "server/src/services/playerbots/playerBotLocalDefenseConfig.js": {
+      "baseSha256": null,
+      "sourceSha256": "9145d735ee2d2f01f21a02bf24ac7c883b80f47c088f7abc7dc1c943137baa5d",
+      "overlaySha256": "9145d735ee2d2f01f21a02bf24ac7c883b80f47c088f7abc7dc1c943137baa5d",
+      "subsystem": "playerbots-core"
+    },
+    "server/src/services/playerbots/playerBotLocalDefenseRuntime.js": {
+      "baseSha256": null,
+      "sourceSha256": "0c149a9f7d2d8bfa59c0d052db1b64591d1314d801a80630451160e45050616c",
+      "overlaySha256": "0c149a9f7d2d8bfa59c0d052db1b64591d1314d801a80630451160e45050616c",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotMarketPolicy.js": {
@@ -376,8 +418,8 @@
     },
     "server/src/services/playerbots/playerBotMiningEscortRuntime.js": {
       "baseSha256": null,
-      "sourceSha256": "7806ad01cca7a9e7200060e4ce707ed564933a04e6afb017268f106933c1951a",
-      "overlaySha256": "7806ad01cca7a9e7200060e4ce707ed564933a04e6afb017268f106933c1951a",
+      "sourceSha256": "dd81f19f65e7d93d85b11589819199d6014748046ef5f837d5778c8b81b4f4e0",
+      "overlaySha256": "dd81f19f65e7d93d85b11589819199d6014748046ef5f837d5778c8b81b4f4e0",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotNullsecConflictRuntime.js": {
@@ -394,8 +436,8 @@
     },
     "server/src/services/playerbots/playerBotOperationRuntime.js": {
       "baseSha256": null,
-      "sourceSha256": "9a782067e88a434128edd3691944dbf1748de1fc4aa7036c3fdfbad031383bbd",
-      "overlaySha256": "9a782067e88a434128edd3691944dbf1748de1fc4aa7036c3fdfbad031383bbd",
+      "sourceSha256": "e2a8ee380f571593f68c38c8012b75296e3336b55220910c1baa4547217f9dc5",
+      "overlaySha256": "e2a8ee380f571593f68c38c8012b75296e3336b55220910c1baa4547217f9dc5",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotOpsSummary.js": {
@@ -438,6 +480,12 @@
       "baseSha256": null,
       "sourceSha256": "67826d077e846921b43eeab7f5114ebdefd08f9c0cfa03bebc6a2edaf9cadbf0",
       "overlaySha256": "67826d077e846921b43eeab7f5114ebdefd08f9c0cfa03bebc6a2edaf9cadbf0",
+      "subsystem": "playerbots-core"
+    },
+    "server/src/services/playerbots/playerBotRescueArrival.js": {
+      "baseSha256": null,
+      "sourceSha256": "5eb06bdcf7e80af2a8c115ea12b8d73e6be4b436e7e1e775197e8f9b6477cd03",
+      "overlaySha256": "5eb06bdcf7e80af2a8c115ea12b8d73e6be4b436e7e1e775197e8f9b6477cd03",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotRuntime.js": {
@@ -484,8 +532,8 @@
     },
     "server/src/services/playerbots/playerBotTaskRuntime.js": {
       "baseSha256": null,
-      "sourceSha256": "3c542b84f18b28b64e2a44842a7706ac35b8882315f3bb29c25058d7570b456a",
-      "overlaySha256": "3c542b84f18b28b64e2a44842a7706ac35b8882315f3bb29c25058d7570b456a",
+      "sourceSha256": "919fa06978d514c0d0e1a8f1efeb5d347b4b5202c7a7a857e20338ef90f26426",
+      "overlaySha256": "919fa06978d514c0d0e1a8f1efeb5d347b4b5202c7a7a857e20338ef90f26426",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotTerritoryRuntime.js": {
@@ -496,8 +544,8 @@
     },
     "server/src/services/playerbots/playerBotThreatResponseRuntime.js": {
       "baseSha256": null,
-      "sourceSha256": "6a598e6cfe251f4496a65b300691575123eedadb33542ba9cee5384e46880358",
-      "overlaySha256": "6a598e6cfe251f4496a65b300691575123eedadb33542ba9cee5384e46880358",
+      "sourceSha256": "e9730105ece166fc5057d72b1f534142ceece558cf5c80656988fa2e5900f5f7",
+      "overlaySha256": "e9730105ece166fc5057d72b1f534142ceece558cf5c80656988fa2e5900f5f7",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotTickStallWatch.js": {
@@ -532,14 +580,14 @@
     },
     "server/src/services/scheduler/durableScheduler.js": {
       "baseSha256": "9a735e6f82dcfdf63641b59c3674dfde905c4e358a09efd4b57d06263c2ca053",
-      "sourceSha256": "c596c4436d81809ec28df52523de84ab8a8957722b30c3fcec98b6697e08511e",
-      "overlaySha256": "c596c4436d81809ec28df52523de84ab8a8957722b30c3fcec98b6697e08511e",
+      "sourceSha256": "300517f27b6629b6451b41a840da8cecb4c0f8b2502a98f720400a3ded7a6246",
+      "overlaySha256": "300517f27b6629b6451b41a840da8cecb4c0f8b2502a98f720400a3ded7a6246",
       "subsystem": "scheduler"
     },
     "server/src/services/scheduler/durableSchedulerProcess.worker.js": {
       "baseSha256": "3a9e931e11b729bd800550791c33bd0ee61630006f707c7a400b4349172e7575",
-      "sourceSha256": "aacfa1961ed2b932f48bfd805d9069bd359facebbc381ef845956560400dceb5",
-      "overlaySha256": "aacfa1961ed2b932f48bfd805d9069bd359facebbc381ef845956560400dceb5",
+      "sourceSha256": "cf45f1f14a40fae23355129b5f7acf73e58ec5165bd84c7ba5b5c3af7c41434b",
+      "overlaySha256": "cf45f1f14a40fae23355129b5f7acf73e58ec5165bd84c7ba5b5c3af7c41434b",
       "subsystem": "scheduler"
     },
     "server/src/services/scheduler/productionSchedulerRuntime.js": {
@@ -553,6 +601,12 @@
       "sourceSha256": "ba21b71296b3ba41d252de5fdccb6bca6a75102a125df43f556d35c75fb75a6b",
       "overlaySha256": "ba21b71296b3ba41d252de5fdccb6bca6a75102a125df43f556d35c75fb75a6b",
       "subsystem": "scheduler"
+    },
+    "server/src/services/security/crimewatchState.js": {
+      "baseSha256": "46cf97d25ba2f99b925a3b4f1b5da80596be783ac6fcb1a3869628989a950f84",
+      "sourceSha256": "e699a252c15ba55c5ecacaabc1bfca5d060f3acc15e909d262e9b742132633fb",
+      "overlaySha256": "e699a252c15ba55c5ecacaabc1bfca5d060f3acc15e909d262e9b742132633fb",
+      "subsystem": "platform"
     },
     "server/src/services/security/customsInspectionCaseStore.js": {
       "baseSha256": "35938330a03b9ebaa081adf7921e8bbd8b3fc263e420bbd09e85dff517f5414a",
@@ -594,6 +648,12 @@
       "baseSha256": "afe03a1e9e0fa1525aa56a4d3782ef4e91ba06e509a49ce15803e3d1732e1d1d",
       "sourceSha256": "41232e18e425478828ac0a6718b1ca36e3950d84614556186cba0c87e244adf6",
       "overlaySha256": "41232e18e425478828ac0a6718b1ca36e3950d84614556186cba0c87e244adf6",
+      "subsystem": "space-runtime"
+    },
+    "server/src/space/modules/hostileModuleRuntime.js": {
+      "baseSha256": "db747aa99975012526f576e6042ba2c1c6d7d664c58cc50e0dc31fc5e550d93f",
+      "sourceSha256": "b635f782a523e700150fbc7e27384679edbc6ee72b5c21815a85765df349f2dc",
+      "overlaySha256": "b635f782a523e700150fbc7e27384679edbc6ee72b5c21815a85765df349f2dc",
       "subsystem": "space-runtime"
     },
     "server/src/space/runtime.js": {
@@ -653,10 +713,11 @@
   },
   "addonFiles": {
     "addons/playerbots/GUIDE.md": "a580c64a972341953e80656c5d4aa471c8b99203a5de05797f3885db864cf7cc",
-    "addons/playerbots/INSTALLATION.md": "53cba604b5dd5d8733a5c94fe86ad1febb019bad6f1bac7dc1653cfd13781233",
+    "addons/playerbots/INSTALLATION.md": "9e87ebeac8063a8a61bea4c6e2ea19db9abc88a53abbabde97c0a1c20ca7a0ff",
     "addons/playerbots/LICENSE": "ce3fb82d9ee80a1cb0e548f9b0560ead52378ee2b4e826fd9459b4acf7075d89",
-    "addons/playerbots/OPERATIONS.md": "40a2b4157bec5d3d7d8c9c1d7230775b506a7746ab31d41202389333a4405603",
-    "addons/playerbots/README.md": "9aa94b3484eb2592436c042190cae1bdc791c77451211b134478beb24d8ea5f9",
+    "addons/playerbots/LOCAL_DEFENSE.md": "f0e6c59a9338013f24333f2d7a6924940fa524f13f01c0902b95ab2fb5ff74b1",
+    "addons/playerbots/OPERATIONS.md": "78f5acc686d1bdffa9575709b6fc43b946e85b554c87eb517e057aa3fdc906f1",
+    "addons/playerbots/README.md": "3c287fdfa36583affb1aa1a85d46decaaca1b7d10885b844ba55e2a41764e7cd",
     "addons/playerbots/THIRD_PARTY_NOTICES.md": "4e53a2b31f3965241b9d182b7764420e4f121213267ebc3936682544204c34dc",
     "addons/playerbots/TROUBLESHOOTING.md": "2ede112e09185ccab09f461cbfd8736493e44e5567223d0ec98b75b148607689",
     "addons/playerbots/compose.override.yaml": "05064bc18f0768263cc8bdc2da14c77e7e8078a37fd3612d087c578f53d59869",
@@ -666,6 +727,6 @@
     "addons/playerbots/dashboard/styles.css": "65cd10a5a3bf755d07532aa7c7da55e8d3ac3a5af796dcec6ed8910ba5f05826",
     "addons/playerbots/dashboard-server.js": "fba3e2d85b841bb8195bdd1791815bdbec0d0a97918095fbe996c66583d5c1fc",
     "addons/playerbots/index.js": "8b73fbf55e1d63bb233cf26362f2e8881066271f4304da4a543e687b35cea893",
-    "addons/playerbots/manifest.json": "f24e233b1b8b3d46a9899d32175cdd00ea9a2eaeda0784eeed75aa107c3420b0"
+    "addons/playerbots/manifest.json": "73bd2a1fea3fab7f3e1a0926bd1f8ec08e25a6fb983aa3b8ad33d8dc79b834ad"
   }
 }

@@ -3252,8 +3252,9 @@ function tickScene(scene, now, hooks = {}) {
 }
 
 module.exports = {
-  resolveAvailableMineableTargetEntries,
   appendNpcMiningCargo,
+  resolveNearestMineableTargetForKind,
+  resolveAvailableMineableTargetEntries,
   clearNpcMiningCargo,
   getNpcOreCargoSummary,
   getMiningFleetsForSystem,

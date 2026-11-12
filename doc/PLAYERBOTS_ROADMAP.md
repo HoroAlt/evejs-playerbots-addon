@@ -2179,3 +2179,30 @@ arrival and rotation over several periods; interruption tests for the audited
 flows; the burst of overdue jobs after every restart; the 15,000-pilot and
 5,000-online targets, which this evidence argues against on this host; and
 every live gate listed earlier in this roadmap.
+
+## Community contributions — add-on 0.2.143, 12 Nov 2026
+
+Seven pull requests from @gzy40347 to the public add-on repository were
+reviewed, merged and packaged:
+
+| PR | Change | Notes from review |
+| --- | --- | --- |
+| #1 | A mining trip counts only ore the unload confirms; ore within reach is preferred; ordinary miners move away from a base whose belts are all unsafe (territorial work keeps its base); stale asynchronous mining results are discarded | also overlays `miningNpcOperations.js`, whose export the bots already used but which the published overlay did not ship |
+| #2 | Upgrades reuse an owned hull of the requested type at a reachable high-security station before buying another; a vanished reserved hull blocks instead of buying a substitute | a pilot already flying the requested hull only replenishes modules |
+| #3 | Structure relocation skips points rejected by the ESS warp rule | |
+| #4 | The security Dominix fit uses five mid slots; saved jobs with the old fit are repaired and the surplus module is returned to the hangar; fits are checked against the hull's slots before buying | |
+| #5 | War patrols require an active war and a legal target and respect the combat cooldown | patrols no longer start during the declaration wait |
+| #6 | Unconfirmed industrial purchases keep the request, baselines, observed outcome and the market authority's message | no retry is added |
+| #7 | Opt-in local defense: same-system responders defend an attacked bot within Crimewatch rules, then resume their work; off by default with empty allow-lists; administrator commands under `/playerbots defense` | adds small hooks to `crimewatchState.js`, `hostileModuleRuntime.js`, the chat command router and the scheduler (`wakeEarlier`) |
+
+Review covered every added line for network, process and file-system access
+(none outside the existing authorities and test runners), the engine files
+newly overlaid (each differs from EveJS 261108.1 only by the stated exports or
+hooks), and the conflicts between the pull requests (resolved by keeping both
+sides; PR #7's mining guard supersedes PR #1's). Nine existing tests needed
+their fixtures updated for the new checks or the intended behaviour changes
+above; one new test covers the war declaration wait. The contributors' own
+tests ship in the public repository under `tests/`.
+
+Live behaviour: local defense was not enabled on the remote server, and the
+other changes have not yet been observed in live play.

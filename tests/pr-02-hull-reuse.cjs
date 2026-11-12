@@ -126,6 +126,9 @@ async function hull() {
         travelToStation: async () => null,
         block,
         canUseRung: () => true,
+        // Merged with #4: advanceUpgrade first repairs a legacy Dominix fit.
+        migrateLegacyDominixFit: () => {},
+        upgradeSlotError: () => null,
         record,
         saveOperation,
         buyUnits: () => {
