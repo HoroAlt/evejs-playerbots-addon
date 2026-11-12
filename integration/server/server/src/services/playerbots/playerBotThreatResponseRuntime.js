@@ -74,6 +74,28 @@ async function handleIncomingThreat(payload, dependencies = {}) {
   if (!attackerEntityID) return { handled: false, reason: "attacker-entity-unavailable" };
   let operation = operationRuntime.getOperation(bot.characterID);
   const pirateNPC = require("./playerBotCombatPolicy").isPirateNpc(attacker);
+  const localSettings = require("./playerBotLocalDefenseConfig").get();
+  if (localSettings.enabled && localSettings.systemIDs.includes(Number(payload.scene?.systemID))) {
+    if (require("./playerBotLocalDefenseAdapter").hasLease(bot.characterID)) {
+      wake(bot.characterID);
+      return {handled:true,action:"rescue-owner-reassess",attackerEntityID};
+    }
+    if (operation?.kind === "mine" && localSettings.miningRescue !== false) {
+      operationRuntime.setMiningIncomingThreat(bot.characterID,attackerEntityID,{action:"retreat",
+        attackerCharacterID:characterIDForEntity(attacker)||null,receivedAtMs:Number(payload.whenMs)||Date.now()});
+      return {handled:true,action:"local-rescue-miner-evacuation",attackerEntityID};
+    }
+    // Non-combat operations have no rat-combat state machine. Merely waking a
+    // PI/courier/industrial job leaves it executing business work under fire.
+    // Queue the durable intent; an in-flight economic commit keeps ownership
+    // until its safe handoff instead of being cancelled or replayed.
+    if (localSettings.generalRescue !== false && operation &&
+        operation.kind !== "combat" && operation.kind !== "mine" && ["active", "holding"].includes(operation.status)) {
+      operationRuntime.requestThreatRetreat(bot.characterID, attackerEntityID,
+        "non-combat operation under local attack");
+      return {handled:true,action:"local-rescue-noncombat-evacuation",attackerEntityID};
+    }
+  }
 
   // Existing PvE and mining-escort logic owns NPC rat combat. Wake both sides
   // of the mining group so a rat cannot sit on grid for a full poll interval.
@@ -83,7 +105,12 @@ async function handleIncomingThreat(payload, dependencies = {}) {
     // attacker every few seconds decides the same thing as one per hit.
     const assessedAtMs = typeof dependencies.now === "function" ? dependencies.now() : Date.now();
     const previous = lastNpcAssessmentByCharacter.get(bot.characterID);
-    if (previous && previous.attackerEntityID === attackerEntityID &&
+    // Local adaptive defense updates survival and withdrawal decisions from
+    // live damage. Reusing an earlier decision would suppress that update.
+    // Preserve upstream duplicate reuse outside the configured local policy.
+    const adaptiveDefense = localSettings.enabled && localSettings.aggressive === true &&
+      localSettings.systemIDs.includes(Number(payload.scene?.systemID));
+    if (!adaptiveDefense && previous && previous.attackerEntityID === attackerEntityID &&
         assessedAtMs - previous.atMs < NPC_ASSESSMENT_REUSE_MS && assessedAtMs >= previous.atMs) {
       return { handled: true, action: "wake-pve-response", attackerEntityID, reused: true };
     }
@@ -229,6 +256,7 @@ function noteIncomingDamage(scene, attackerEntity, targetEntity, targetSession, 
     ? damageResult.data.perLayer.reduce((sum, layer) => sum + Math.max(0, Number(layer && layer.appliedEffective) || 0), 0)
     : 1);
   if (!characterID || !attackerID || !(amount > 0)) return false;
+  require("./playerBotLocalDefenseAdapter").reportThreat(scene, attacker, targetEntity, "damage");
   const key = `${characterID}:${attackerID}`;
   const now = Math.max(0, Number(whenMs) || Date.now());
   const last = Number(lastResponseByKey.get(key)) || 0;
@@ -243,6 +271,19 @@ function noteIncomingDamage(scene, attackerEntity, targetEntity, targetSession, 
 }
 
 module.exports = {
+  noteIncomingEwar(scene, attackerEntity, targetEntity, kind) {
+    const localSettings = require("./playerBotLocalDefenseConfig").get();
+    if (!localSettings.enabled || !localSettings.systemIDs.includes(Number(scene?.systemID))) return false;
+    if (!["scram", "web", "neut"].includes(kind) || targetEntity?.session?._playerBotActor !== true) return false;
+    const attacker = resolveAttacker(scene, attackerEntity);
+    const characterID = characterIDForEntity(targetEntity), attackerID = positiveID(attacker?.itemID);
+    if (!characterID || !attackerID) return false;
+    require("./playerBotLocalDefenseAdapter").reportThreat(scene, attacker, targetEntity, kind);
+    const key = `${characterID}:${attackerID}`, now = Date.now();
+    if (now - Number(lastResponseByKey.get(key) || 0) < RESPONSE_COOLDOWN_MS) return true;
+    lastResponseByKey.set(key, now);
+    return scheduleThreatResponse({ characterID, scene, attackerEntity: attacker, targetEntity, whenMs: now });
+  },
   RESPONSE_COOLDOWN_MS,
   handleIncomingThreat,
   noteIncomingDamage,

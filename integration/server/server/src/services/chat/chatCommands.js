@@ -1414,6 +1414,9 @@ function executeChatCommand(session, rawMessage, chatHub, options = {}) {
       const result = require("../playerbots/playerBotOperationRuntime").startAllianceFounding(bot.characterName);
       return handledResult(chatHub, session, options, result.message);
     }
+    const defenseMatch = argumentText.match(/^defense(?:\s+([\s\S]*))?$/i);
+    if (defenseMatch) return handledResult(chatHub, session, options,
+      require("../playerbots/playerBotLocalDefenseCommands").handle(defenseMatch[1], hasStaffDebugRole(session)));
     const autoworkMatch = argumentText.match(/^autowork(?:\s+(on|off|status))?$/i);
     if (autoworkMatch) {
       const director = require("../playerbots/playerBotDirectorRuntime");

@@ -225,6 +225,14 @@ function ensureMiningEscort(miner, miningOperation) {
     if (!bot || Number(bot.characterID) === Number(miner.characterID) || bot.specialty !== "security" ||
         bot.status === "paused" || bot.autonomyPaused === true) continue;
     if (activeByCharacter.has(Number(bot.characterID))) continue;
+    if (require("./playerBotLocalDefenseAdapter").hasLease(bot.characterID) ||
+        require("./playerBotInterruptRuntime").hasPending(bot.characterID) ||
+        require("./playerBotInterruptRuntime").isBusy(bot.characterID)) continue;
+    const localSettings = require("./playerBotLocalDefenseConfig").get();
+    if (localSettings.enabled && localSettings.systemIDs.includes(systemID) &&
+        (!localSettings.responderIDs.includes(Number(bot.characterID)) ||
+         !require("./playerBotLocalDefenseAdapter").related(bot.characterID, miner.characterID) ||
+         Number((require("../character/characterState").getCharacterRecord(bot.characterID) || {}).solarSystemID) !== systemID)) continue;
     const character = require("../character/characterState").getCharacterRecord(bot.characterID) || {};
     if (Number(character.shipTypeID) === 670) continue;
     const profile = operationRuntime.getRoleShipFitProfile(bot, "security");

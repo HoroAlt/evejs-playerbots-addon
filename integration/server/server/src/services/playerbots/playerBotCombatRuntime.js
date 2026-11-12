@@ -649,6 +649,8 @@ function getCombatContext(bot, scene, entity, operation = null) {
   const corporationID = normalizeID(character.corporationID || bot.corporationID);
   const corporation = require("../corporation/corporationState").getCorporationRecord(corporationID) || {};
   const crimewatch = require("../security/crimewatchState");
+  if (typeof crimewatch.isCharacterSuspect !== "function" || typeof crimewatch.isCharacterCriminal !== "function")
+    throw new Error("LOCAL_DEFENSE_CRIMEWATCH_INTERFACE_MISSING");
   const war = require("../corporation/warRuntimeState");
   const fleetRuntime = require("../fleets/fleetRuntime");
   const ownFleet = fleetRuntime.getFleetForCharacter(bot.characterID);
@@ -689,7 +691,7 @@ function getCombatContext(bot, scene, entity, operation = null) {
 }
 
 function estimateEffectiveHitPoints(typeID, entity = null, fit = null) {
-  const fitting = require("../_secondary/fitting/fittingRuntime");
+  const fitting = require("../fitting/liveFittingState");
   const condition = entity && entity.conditionState || {};
   const layers = [
     { key: "shield", hp: Number(fit && fit.shieldCapacity || entity && (entity.shieldCapacity || entity.maxShieldHP)) || 0,
@@ -720,13 +722,33 @@ function estimateEffectiveHitPoints(typeID, entity = null, fit = null) {
   return effective;
 }
 
+function eligibleDefensiveTarget(bot,target,scene,entity,operation=null,providedContext=null) {
+  if(!require("../../space/destiny/identity/interactionScope").canEntitiesInteractLocally(entity,target))return false;
+  if(combatPolicy.isPirateNpc(target))return true;
+  const context=providedContext||getCombatContext(bot,scene,entity,operation);
+  if(require("./playerBotLocalDefenseAdapter").hasLiveAttack(bot.characterID,target,scene)){
+    // A known managed attacker may be defended against, but this never bypasses
+    // corporation, alliance, fleet, Crimewatch, war or instance authority.
+    context.isManagedBot=()=>false;
+  }
+  return combatPolicy.isEligibleDefensiveTarget(target,context);
+}
+
 function assessDefensiveResponse(bot, target, scene, operation = null) {
-  if (!bot || !target || !scene || !["security", "piracy"].includes(String(bot.specialty || ""))) {
+  const activeCombat = operation && operation.kind === "combat" &&
+    Number(operation.characterID) === Number(bot && bot.characterID) &&
+    ["active", "holding"].includes(operation.status);
+  const role = activeCombat && ["security", "piracy", "war", "nullsec-conflict"].includes(operation.mode)
+    ? operation.mode === "piracy" ? "piracy" : "security"
+    : String(bot && bot.specialty || "");
+  if (!bot || !target || !scene || !["security", "piracy"].includes(role)) {
     return { safe: false, action: "evade", reason: "no-supported-combat-pilot-or-target" };
   }
   try {
     const space = require("./playerBotSpaceRuntime");
     const attached = space.getActorSpace(bot);
+    if(!require("../../space/destiny/identity/interactionScope").canEntitiesInteractLocally(attached.entity,target))
+      return {safe:false,action:"evade",reason:"target-scope-mismatch"};
     const state = space.getSpaceState(bot);
     const drones = getControlledDrones(scene, attached.entity.itemID);
     const combatFit = require("./playerBotCombatFitRuntime").buildCombatFitSnapshot(
@@ -735,9 +757,14 @@ function assessDefensiveResponse(bot, target, scene, operation = null) {
       { ...state, deployedDrones: drones },
     );
     const fit = combatFit.success ? combatFit.fit : { ready: false, readinessProblems: [combatFit.reason] };
+    const defenseAssessment = require("./playerBotDefenseAssessment");
+    if (defenseAssessment.enabled(scene.systemID)) {
+      const eligible = eligibleDefensiveTarget(bot,target,scene,attached.entity,operation||{mode:"security"});
+      return defenseAssessment.assess(bot, target, scene, operation, eligible);
+    }
     if (combatPolicy.isPirateNpc(target)) {
       const operationRuntime = require("./playerBotOperationRuntime");
-      const roleFitReady = operationRuntime.hasRoleShipFit(bot, bot.specialty);
+      const roleFitReady = operationRuntime.hasRoleShipFit(bot, role);
       const safety = combatDecision.assessSafety(state, fit, drones.length, drones.length > 0);
       if (!roleFitReady || !safety.safe || fit.ready !== true) {
         return { ...safety, safe: false, action: "evade",
@@ -746,10 +773,10 @@ function assessDefensiveResponse(bot, target, scene, operation = null) {
       return { safe: true, action: "engage", reason: "attacking-pirate-npc-under-existing-site-and-escort-rules" };
     }
     const combatContext = getCombatContext(bot, scene, attached.entity, operation || { mode: "security" });
-    const eligible = combatPolicy.isEligibleDefensiveTarget(target, combatContext);
+    const eligible = eligibleDefensiveTarget(bot,target,scene,attached.entity,operation||{mode:"security"},combatContext);
     const operationRuntime = require("./playerBotOperationRuntime");
-    const roleFitReady = operationRuntime.hasRoleShipFit(bot, bot.specialty);
-    const fitting = require("../_secondary/fitting/fittingRuntime");
+    const roleFitReady = operationRuntime.hasRoleShipFit(bot, role);
+    const fitting = require("../fitting/liveFittingState");
     const mass = (typeID) => Number(fitting.getTypeAttributeValue(Number(typeID), "mass")) || 0;
     return combatDecision.decideDefensiveResponse({
       eligible,
@@ -828,7 +855,7 @@ function findWarpTackler(scene, shipEntity, bot, operation) {
     .filter((record) => record && ["scram", "disrupt"].includes(String(record.family || "").toLowerCase()))
     .map((record) => scene.getEntityByID(Number(record.sourceBallID)))
     .filter((entity) => entity && (
-      combatPolicy.isEligibleDefensiveTarget(entity, getCombatContext(bot, scene, shipEntity, operation)) ||
+      eligibleDefensiveTarget(bot,entity,scene,shipEntity,operation) ||
       (operation.mode === "piracy"
       ? combatPolicy.isEligiblePiracyTarget(entity, getCombatContext(bot, scene, shipEntity, operation)) || combatPolicy.isPirateNpc(entity)
       : operation.mode === "war"
@@ -1326,7 +1353,7 @@ async function advanceCombat(operation, bot, kit) {
       record(operation, kit, `Mining security escort ship was destroyed on belt ${operation.miningEscortBeltID}.`);
       kit.save(operation);
     }
-    const safety = combatDecision.decideCombatAction({
+    let safety = combatDecision.decideCombatAction({
       state,
       fit,
       liveDroneCount: drones.length,
@@ -1336,15 +1363,46 @@ async function advanceCombat(operation, bot, kit) {
       withdrawRequested: operation.withdrawRequested === true,
       withdrawReason: operation.withdrawReason,
     });
+    if (!operation.withdrawRequested && operation.stage !== "site-loot" &&
+        require("./playerBotDefenseAssessment").enabled(scene.systemID)) {
+      const currentTarget = scene.getEntityByID(Number(operation.defensiveTargetID || operation.targetID));
+      if (currentTarget) {
+        const context = getCombatContext(bot,scene,entity,operation);
+        const legal = eligibleDefensiveTarget(bot,currentTarget,scene,entity,operation,context);
+        const decision = require("./playerBotDefenseAssessment").assess(bot,currentTarget,scene,operation,legal);
+        safety = {...decision,action:decision.action === "clear-tackle" ? "clear-tackle-and-withdraw" : decision.action};
+      }
+    }
     let defensiveTarget = null;
     if (Number(operation.defensiveTargetID) > 0) {
       defensiveTarget = scene.getEntityByID(Number(operation.defensiveTargetID));
       if (!defensiveTarget || defensiveTarget.destroying === true ||
           defensiveTarget.destructionState === "destroying") {
         const previousTargetID = Number(operation.defensiveTargetID);
+        const confirmedWreck = findWreckForTarget(scene, previousTargetID, operation.siteInstanceID);
+        // Destruction may span ticks. Keep the target until its wreck can be
+        // matched; a ship merely leaving the grid must never count as a kill.
+        if (defensiveTarget && !confirmedWreck) {
+          operation.wreckMissingSinceAt ||= Date.now();
+          if (Date.now() - operation.wreckMissingSinceAt < WRECK_APPEARANCE_GRACE_MS) {
+            kit.save(operation);
+            return { delayMs: 1_000 };
+          }
+        }
         if (Number(operation.targetID) === previousTargetID) operation.targetID = null;
         operation.defensiveTargetID = null;
         operation.pendingCombatAction = null;
+        if (confirmedWreck) {
+          operation.lastDestroyedTargetID = previousTargetID;
+          operation.lastTargetLabel = operation.targetLabel || `target ${previousTargetID}`;
+          operation.defensiveLootResumeStage = operation.defensiveResumeStage || null;
+          operation.defensiveResumeStage = null;
+          operation.stage = "loot";
+          operation.wreckMissingSinceAt = null;
+          record(operation, kit, `Confirmed wreck ${confirmedWreck.itemID} for defensive target ${previousTargetID}; recovering it before resuming the interrupted work.`);
+          kit.save(operation);
+          return { delayMs: 1_000, defensiveTargetCleared: true };
+        }
         if (operation.defensiveResumeStage) operation.stage = operation.defensiveResumeStage;
         operation.defensiveResumeStage = null;
         operation.emptySinceAt = Date.now();
@@ -1353,10 +1411,9 @@ async function advanceCombat(operation, bot, kit) {
         return { delayMs: 1_000, defensiveTargetCleared: true };
       }
       const defensiveContext = getCombatContext(bot, scene, entity, operation);
-      const legalDefensiveTarget = combatPolicy.isPirateNpc(defensiveTarget) &&
-          ["security", "piracy"].includes(operation.mode) ||
-        combatPolicy.isEligibleDefensiveTarget(defensiveTarget, defensiveContext);
+      const legalDefensiveTarget = eligibleDefensiveTarget(bot,defensiveTarget,scene,entity,operation,defensiveContext);
       if (!legalDefensiveTarget) {
+        if (drones.length) require("../drone/droneRuntime").commandReturnBay(session,drones.map(drone=>Number(drone.itemID)));
         const previousTargetID = Number(operation.defensiveTargetID);
         if (Number(operation.targetID) === previousTargetID) operation.targetID = null;
         operation.defensiveTargetID = null;
@@ -1510,7 +1567,8 @@ async function advanceCombat(operation, bot, kit) {
           kit.save(operation);
           return { delayMs: 10_000 };
         }
-        operation.stage = operation.siteInstanceID ? "site-engage" : "engage";
+        operation.stage = operation.defensiveLootResumeStage || (operation.siteInstanceID ? "site-engage" : "engage");
+        operation.defensiveLootResumeStage = null;
         operation.targetID = null;
         operation.lastDestroyedTargetID = null;
         operation.emptySinceAt = Date.now();
@@ -1520,7 +1578,8 @@ async function advanceCombat(operation, bot, kit) {
       operation.wreckMissingSinceAt = null;
       const distance = state.distanceTo(wreck.itemID);
       if (distance === null) {
-        operation.stage = operation.siteInstanceID ? "site-engage" : "engage";
+        operation.stage = operation.defensiveLootResumeStage || (operation.siteInstanceID ? "site-engage" : "engage");
+        operation.defensiveLootResumeStage = null;
         operation.targetID = null;
         operation.lastDestroyedTargetID = null;
         kit.save(operation);
@@ -1566,7 +1625,8 @@ async function advanceCombat(operation, bot, kit) {
         return { delayMs: operation.stage === "return" ? 15_000 : 30_000 };
       } else {
         operation.kills = Number(operation.kills || 0) + 1;
-        operation.stage = operation.siteInstanceID ? "site-engage" : "engage";
+        operation.stage = operation.defensiveLootResumeStage || (operation.siteInstanceID ? "site-engage" : "engage");
+        operation.defensiveLootResumeStage = null;
         operation.targetID = null;
         operation.lastDestroyedTargetID = null;
         operation.lootRetryCount = 0;
@@ -1600,8 +1660,7 @@ async function advanceCombat(operation, bot, kit) {
       }
       const combatContext = getCombatContext(bot, scene, entity, operation);
       const stillEligibleByMode = Number(operation.defensiveTargetID) === Number(target.itemID)
-        ? (combatPolicy.isPirateNpc(target) && ["security", "piracy"].includes(operation.mode)) ||
-          combatPolicy.isEligibleDefensiveTarget(target, combatContext)
+        ? eligibleDefensiveTarget(bot,target,scene,entity,operation,combatContext)
         : operation.mode === "piracy"
         ? combatPolicy.isEligiblePiracyTarget(target, combatContext)
         : operation.mode === "war"
@@ -1609,7 +1668,7 @@ async function advanceCombat(operation, bot, kit) {
           : operation.mode === "nullsec-conflict"
             ? combatPolicy.isEligibleNullsecConflictTarget(target, combatContext)
           : combatPolicy.isPirateNpc(target);
-      const stillEligible = stillEligibleByMode &&
+      const stillEligible = stillEligibleByMode && require("../../space/destiny/identity/interactionScope").canEntitiesInteractLocally(entity,target) &&
         (Number(operation.defensiveTargetID) === Number(target.itemID) || !operation.siteInstanceID ||
         Number(target.dungeonSiteInstanceID) === Number(operation.siteInstanceID));
       if (!stillEligible) {
@@ -1987,6 +2046,10 @@ async function advanceCombat(operation, bot, kit) {
 }
 
 module.exports = {
+  getCombatContext,
+  getControlledDrones,
+  launchDrones,
+  estimateEffectiveHitPoints,
   advanceCombat,
   assessDefensiveResponse,
   authorizeFleetAttackTarget,

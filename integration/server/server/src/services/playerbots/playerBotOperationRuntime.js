@@ -42,6 +42,37 @@ const SELL_TO_BID_RATIO = 0.9;
 const ACTIVE_STATUSES = new Set(["active", "holding"]);
 const repo = createTableRepository("service:playerbots", { strict: true });
 const runningBots = new Set();
+const interruptions = require("./playerBotInterruptRuntime");
+const executionOwners = new Map();
+
+function queueInterruption(characterID, intent) {
+  if (interruptions.isApplying(characterID)) return false;
+  interruptions.request(characterID, intent);
+  // The independent intent is durable before stopping any existing lasers.
+  const bot = resolveBotByID(characterID);
+  if (bot && intent.kind === "mining") getSpace().stopMining(bot);
+  drainInterruptions(characterID);
+  wakeThreatenedBot(characterID, "durable-interruption");
+  return true;
+}
+
+function drainInterruptions(characterID) {
+  if (getTasks().hasBlockingLease(characterID)) return false;
+  return interruptions.drain(characterID, intent => {
+    const bot = resolveBotByID(characterID);
+    if (!bot) return true; // Roster removal cannot leave an eternal mailbox.
+    if (intent.kind === "engage") {
+      return setDefensiveCombatTarget(characterID, intent.attackerID, intent.reason) ||
+        requestThreatRetreat(characterID, intent.attackerID, "defensive operation no longer available");
+    }
+    if (intent.kind === "mining") {
+      return setMiningIncomingThreat(characterID, intent.attackerID, intent.details) ||
+        requestThreatRetreat(characterID, intent.attackerID, "mining operation changed during interruption");
+    }
+    if (intent.kind === "stop") return stopOperation(bot.characterName);
+    return requestThreatRetreat(characterID, intent.attackerID, intent.reason);
+  });
+}
 let operationMapCache = null;
 let legacyOperationMapCache = null;
 let operationHistoryCache = null;
@@ -708,10 +739,25 @@ async function travelToStation(operation, bot, stationID, store = OPERATION_STOR
   }
   const state = space.getSpaceState(bot);
   if (!state.inSpace || state.busy) return { delayMs: TRAVEL_DELAY_MS };
+  if ((operation.incomingThreat || operation.threatRetreat) && Number(state.warpScrambleStatus) > 0) {
+    if (!operation.escapeBlockedByTackle) {
+      operation.escapeBlockedByTackle = true;
+      record(operation, "Evacuation is blocked by active warp disruption; awaiting clearance while the rescue request remains active.");
+      store.save(operation);
+    }
+    return { delayMs: 1000, escapeBlocked: true };
+  }
+  if (operation.escapeBlockedByTackle) {
+    delete operation.escapeBlockedByTackle;
+    record(operation, "Warp disruption cleared; retrying the existing evacuation route.");
+    store.save(operation);
+  }
   const distance = state.distanceTo(stationID);
   if (distance === null) return store.block(operation, "blocked", `Station ${stationID} is not in the local scene.`);
   if (distance > DOCK_WARP_RANGE_METERS) {
     const result = space.warp(bot, stationID);
+    if (!result.success && (operation.incomingThreat || operation.threatRetreat) && /WARP_SCRAMBLED/i.test(String(result.message)))
+      return { delayMs: 1000, escapeBlocked: true };
     if (!result.success) return store.block(operation, "blocked", result.message);
     return { delayMs: TRAVEL_DELAY_MS };
   }
@@ -1149,6 +1195,7 @@ async function advanceMining(operation, bot) {
     }
     const cargoBeforeMining = oreInCargo(bot);
     if (!operation.miningCargoSnapshot) operation.miningCargoSnapshot = cargoBeforeMining;
+    const owner = executionOwners.get(Number(bot.characterID));
     const startingShip = getCharacterRecord(bot.characterID) || {};
     const shipID = Number(startingShip.shipID);
     const systemID = Number(startingShip.solarSystemID);
@@ -1156,7 +1203,7 @@ async function advanceMining(operation, bot) {
       const liveBot = resolveBotByID(bot.characterID);
       const liveShip = getCharacterRecord(bot.characterID) || {};
       const latest = getOperation(bot.characterID);
-      return Boolean(liveBot) &&
+      return (!owner || interruptions.current(owner)) && Boolean(liveBot) &&
         liveBot.status !== "paused" && liveBot.autonomyPaused !== true &&
         Number(liveShip.shipID) === shipID && Number(liveShip.solarSystemID) === systemID &&
         Number(liveShip.shipTypeID) !== 670 && !liveShip.stationID && !liveShip.structureID &&
@@ -1166,7 +1213,7 @@ async function advanceMining(operation, bot) {
     if (!isCurrent()) return { delayMs: 1000, interrupted: true };
     const miningRead = space.mineNearestAsteroid(bot, miningModules, MINING_APPROACH_METERS,
       operation.homeStationID, { isCurrent });
-    const result = await miningRead;
+    const result = owner ? await interruptions.readUntilInterrupted(owner, miningRead) : await miningRead;
     // Do not write any stale mining snapshot, even if a dependency ignores cancellation.
     if (result.interrupted || !isCurrent()) return { delayMs: 1000, interrupted: true };
     if (result.noOre) {
@@ -1930,7 +1977,7 @@ function queueUpgradeForMarketCapacity(characterID, reason, retryAfterAtMs = Dat
   return { success: true, operation };
 }
 
-function hasRoleShipFit(bot, role) {
+function hasRoleShipFit(bot, role, options = {}) {
   const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
   const character = getCharacterRecord(bot && bot.characterID) || {};
   const rung = ladder.find((entry) => Number(entry.hullTypeID) === Number(character.shipTypeID));
@@ -1954,11 +2001,31 @@ function hasRoleShipFit(bot, role) {
     locationID: shipID,
     flagID: itemStore.ITEM_FLAGS.DRONE_BAY,
   });
+  // Launched drones belong to this fit too. Read the live scene rather than
+  // treating a normal launch as a missing-drone casualty on the next hit.
+  let entity = null;
+  let deployedDrones = [];
+  if (["security", "piracy"].includes(role)) {
+    try {
+      const space = require("./playerBotSpaceRuntime");
+      if (space.getSpaceState(bot).inSpace) {
+        const attached = space.getActorSpace(bot);
+        entity = attached.entity;
+        deployedDrones = [...attached.scene.dynamicEntities.values()].filter((drone) =>
+          drone.kind === "drone" && Number(drone.controllerID) === shipID);
+      }
+    } catch (_) {
+      // A docked ship is checked from its persisted bay and Dogma attributes.
+    }
+  }
+  const availableDrones = [...bay, ...deployedDrones.map((drone) => ({ ...drone, stacksize: 1, quantity: 1 }))];
   const droneCounts = new Map();
-  for (const item of bay) droneCounts.set(Number(item.typeID), (droneCounts.get(Number(item.typeID)) || 0) + getInventory().unitsOf(item));
+  for (const item of availableDrones) droneCounts.set(Number(item.typeID), (droneCounts.get(Number(item.typeID)) || 0) + getInventory().unitsOf(item));
   const requiredDrones = new Map();
   for (const typeID of rung.droneTypeIDs || []) requiredDrones.set(Number(typeID), (requiredDrones.get(Number(typeID)) || 0) + 1);
-  if ([...requiredDrones].some(([typeID, quantity]) => (droneCounts.get(typeID) || 0) < quantity)) return false;
+  if (options.allowPartialDrones === true) {
+    if (![...requiredDrones].some(([typeID]) => (droneCounts.get(typeID) || 0) > 0)) return false;
+  } else if ([...requiredDrones].some(([typeID, quantity]) => (droneCounts.get(typeID) || 0) < quantity)) return false;
   const cargo = itemStore.listCharacterItems(bot.characterID, {
     locationID: shipID,
     flagID: itemStore.ITEM_FLAGS.CARGO_HOLD,
@@ -1969,21 +2036,12 @@ function hasRoleShipFit(bot, role) {
   for (const typeID of rung.cargoTypeIDs || []) requiredCargo.set(Number(typeID), (requiredCargo.get(Number(typeID)) || 0) + 1);
   if ([...requiredCargo].some(([typeID, quantity]) => (cargoCounts.get(typeID) || 0) < quantity)) return false;
   if (["security", "piracy"].includes(role)) {
-    const bayCounts = new Map();
-    for (const item of bay) bayCounts.set(Number(item.typeID), (bayCounts.get(Number(item.typeID)) || 0) + getInventory().unitsOf(item));
     const requiredDroneTypes = new Map();
     for (const typeID of rung.droneTypeIDs || []) requiredDroneTypes.set(Number(typeID), (requiredDroneTypes.get(Number(typeID)) || 0) + 1);
-    const droneTypeReady = [...requiredDroneTypes].every(([typeID, count]) => (bayCounts.get(typeID) || 0) >= count);
-    if (!droneTypeReady) return false;
-    const shipItem = itemStore.findItemById(shipID) || {};
-    let entity = null;
-    try {
-      const space = require("./playerBotSpaceRuntime");
-      const state = space.getSpaceState(bot);
-      if (state.inSpace) entity = space.getActorSpace(bot).entity;
-    } catch (_) {
-      // Docked fitting audit uses the persisted ship and Dogma snapshot below.
+    if (options.allowPartialDrones === true) {
+      for (const [typeID, quantity] of requiredDroneTypes) requiredDroneTypes.set(typeID, Math.min(quantity, droneCounts.get(typeID) || 0));
     }
+    const shipItem = itemStore.findItemById(shipID) || {};
     entity ||= {
       itemID: shipID,
       typeID: Number(character.shipTypeID),
@@ -1994,6 +2052,7 @@ function hasRoleShipFit(bot, role) {
       maxSiteDifficulty: Number(rung.maxSiteDifficulty) || 0,
       requiredDroneTypes,
       droneDamageTypeByID: rung.droneDamageTypeByID,
+      deployedDrones,
     });
     if (!fitResult.success || fitResult.fit.ready !== true) return false;
   }
@@ -4297,6 +4356,9 @@ function canRunIndependentWorkAlongsideIndustryReview(cycle, requested) {
 
 function assertCanStart(bot, options = {}) {
   if (!bot) return "Playerbot not found.";
+  if (interruptions.hasPending(bot.characterID) || interruptions.isBusy(bot.characterID) ||
+      require("./playerBotLocalDefenseAdapter").hasLease(bot.characterID))
+    return "The pilot is completing a step or emergency handoff.";
   const current = getOperation(bot.characterID);
   if (current && current.kind === "upgrade" && current.resumeCombat &&
       !["stopped", "completed"].includes(current.status)) {
@@ -5172,11 +5234,13 @@ async function advanceThreatRetreat(operation, bot) {
   const dockedStationID = normalizePositiveInteger(character.stationID || character.structureID);
   if (dockedStationID) {
     const targetID = Number(operation.threatRetreat.attackerEntityID) || 0;
+    const resumeStatus = operation.threatRetreat.resumeStatus;
     delete operation.threatRetreat;
     if (operation.kind === "threat-retreat") {
       return finish(operation, `Evacuated to station ${dockedStationID} after incoming aggression from ${targetID || "an unknown attacker"}.`);
     }
     operation.routeTaskID = null;
+    if (resumeStatus) operation.status = resumeStatus;
     record(operation, `Reached station ${dockedStationID} to get clear of an incoming attacker; the interrupted operation is safely resuming.`);
     saveOperation(operation);
     return { delayMs: 1_000 };
@@ -5205,9 +5269,11 @@ function wakeThreatenedBot(characterID, reason) {
 }
 
 function setDefensiveCombatTarget(characterID, attackerEntityID, reason = "incoming aggression") {
+  if (queueInterruption(characterID, { kind: "engage", attackerID: attackerEntityID, reason })) return true;
   const operation = getOperation(characterID);
   const id = normalizePositiveInteger(attackerEntityID);
   if (!operation || operation.kind !== "combat" || !ACTIVE_STATUSES.has(operation.status) || !id) return false;
+  clearRouteTask(operation);
   operation.defensiveTargetID = id;
   operation.targetID = null;
   operation.pendingCombatAction = null;
@@ -5223,9 +5289,11 @@ function setDefensiveCombatTarget(characterID, attackerEntityID, reason = "incom
 }
 
 function setMiningIncomingThreat(characterID, attackerEntityID, details = {}) {
+  if (queueInterruption(characterID, { kind: "mining", attackerID: attackerEntityID, details })) return true;
   const operation = getOperation(characterID);
   const id = normalizePositiveInteger(attackerEntityID);
   if (!operation || operation.kind !== "mine" || !ACTIVE_STATUSES.has(operation.status) || !id) return false;
+  clearRouteTask(operation);
   operation.incomingThreat = {
     attackerEntityID: id,
     attackerCharacterID: normalizePositiveInteger(details.attackerCharacterID) || null,
@@ -5253,8 +5321,12 @@ function requestThreatRetreat(characterID, attackerEntityID, reason = "the ship 
   const id = normalizePositiveInteger(characterID);
   const bot = resolveBotByID(id);
   if (!bot) return { success: false, message: "Threatened bot is no longer in the roster." };
+  if (queueInterruption(id, { kind: "retreat", attackerID: attackerEntityID, reason })) {
+    return { success: true, queued: interruptions.hasPending(id), message: "Emergency intent recorded; settling the current step before navigation handoff." };
+  }
   let operation = getOperation(id);
   if (operation && operation.kind === "combat" && ACTIVE_STATUSES.has(operation.status)) {
+    clearRouteTask(operation);
     operation.emergencyRetreat = true;
     operation.emergencyDepartureOrderedAt = null;
     const safeStationID = findThreatEvacuationStation(bot);
@@ -5269,7 +5341,8 @@ function requestThreatRetreat(characterID, attackerEntityID, reason = "the ship 
   } else if (operation && operation.kind === "mine" && ACTIVE_STATUSES.has(operation.status)) {
     return setMiningIncomingThreat(id, attackerEntityID, { action: "retreat", receivedAtMs: Date.now() });
   } else {
-    if (!operation || !ACTIVE_STATUSES.has(operation.status)) {
+    if (!operation || (!ACTIVE_STATUSES.has(operation.status) && !operation.pending &&
+        !["review", "blocked"].includes(operation.status))) {
       operation = baseOperation("threat-retreat", bot, { stage: "retreat" });
     }
     if (operation.routeTaskID) {
@@ -5278,12 +5351,15 @@ function requestThreatRetreat(characterID, attackerEntityID, reason = "the ship 
       operation.routeTaskID = null;
     }
     operation.threatRetreat = {
+      resumeStatus: operation.threatRetreat?.resumeStatus ||
+        (!ACTIVE_STATUSES.has(operation.status) ? operation.status : null),
       attackerEntityID: normalizePositiveInteger(attackerEntityID) || null,
       reason: String(reason).slice(0, 200),
       requestedAtMs: Date.now(),
       destinationStationID: null,
       retryAtMs: 0,
     };
+    operation.status = "active";
     record(operation, `Incoming aggression from ${attackerEntityID || "an unknown attacker"}; ${reason}. Evacuating through normal navigation and docking authorities.`);
     saveOperation(operation);
   }
@@ -5294,6 +5370,10 @@ function requestThreatRetreat(characterID, attackerEntityID, reason = "the ship 
 function stopOperation(botQuery) {
   const bot = getPlayerBots().resolveBot(botQuery);
   if (!bot) return { success: false, message: `No unique playerbot found with that name: ${botQuery}.` };
+  if (!interruptions.isApplying(bot.characterID) && interruptions.isBusy(bot.characterID)) {
+    queueInterruption(bot.characterID, { kind: "stop" });
+    return { success: true, queued: true, message: "Stop recorded; the current committed action will settle before stopping." };
+  }
   const operation = getOperation(bot.characterID);
   if (!operation || (!["active", "holding", "blocked", "review"].includes(operation.status) &&
       operation.loadSheddingPaused !== true)) {
@@ -5748,7 +5828,10 @@ function reconcileTransientOperations() {
 
 async function advanceOperation(characterID) {
   const id = normalizePositiveInteger(characterID);
-  if (runningBots.has(id)) return { delayMs: STEP_DELAY_MS, busy: true };
+  if (require("./playerBotLocalDefenseAdapter").hasLease(id)) return { delayMs: 1000, busy: true };
+  if (runningBots.has(id) || interruptions.isBusy(id)) return { delayMs: 1000, busy: true };
+  drainInterruptions(id);
+  if (interruptions.hasPending(id)) return { delayMs: 1000, interrupted: true };
   const operation = getOperation(id);
   if (!operation || !ACTIVE_STATUSES.has(operation.status)) return { done: true };
   const bot = resolveBotByID(id);
@@ -5759,8 +5842,13 @@ async function advanceOperation(characterID) {
     : HANDLERS[operation.kind];
   if (!handler) return block(operation, "blocked", `Unknown operation type ${operation.kind}.`);
   if (operation.status === "holding") operation.status = "active";
+  const owner = interruptions.acquire(id, "operation", operation.operationID);
+  if (!owner) return { delayMs: 1000, busy: true };
+  executionOwners.set(id, owner);
   runningBots.add(id);
   let result;
+  let interrupted = false;
+  let handlerFailed = false;
   let capacityReason = "";
   try {
     result = await handler(operation, bot);
@@ -5770,11 +5858,19 @@ async function advanceOperation(characterID) {
       capacityReason = String(error.message || "System actor capacity reached.");
     } else {
       const latest = getOperation(id) || operation;
-      return block(latest, "holding", `Error during ${latest.stage}: ${String(error && error.message || error).slice(0, 200)}`);
+      handlerFailed = true;
+      result = block(latest, "holding", `Error during ${latest.stage}: ${String(error && error.message || error).slice(0, 200)}`);
     }
   } finally {
     runningBots.delete(id);
+    executionOwners.delete(id);
+    interruptions.release(owner);
+    // Transaction handlers have completed their own durable result accounting.
+    // No old handler may write after the mailbox is applied at this safe point.
+    interrupted = drainInterruptions(id);
   }
+  if (interrupted) return { delayMs: 1000, interrupted: true };
+  if (handlerFailed) return result;
   if (["active", "completed"].includes(operation.status) && operation.lastError) {
     operation.lastError = null;
     record(operation, `Recovered from a transient error and continued at ${describeOperationStage(operation)}.`);
@@ -6071,6 +6167,7 @@ module.exports = {
     }),
   },
   advanceOperation,
+  drainInterruptions,
   setDefensiveCombatTarget,
   setMiningIncomingThreat,
   requestThreatRetreat,

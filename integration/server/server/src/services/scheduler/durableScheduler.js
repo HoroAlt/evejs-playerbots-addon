@@ -384,6 +384,7 @@ function createDurableScheduler(options = {}) {
         Promise.resolve({ scheduled: 0, jobs: [] });
     },
     cancel: (jobID) => call("cancel", { jobID }),
+    wakeEarlier: (jobID, dueAtMs) => call("wakeEarlier", { jobID, dueAtMs }),
     list: (query = {}) => call("list", query && typeof query === "object" ? query : {}),
     register(type, handler) {
       const normalizedType = String(type || "").trim();

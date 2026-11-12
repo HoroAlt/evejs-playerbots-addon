@@ -50,6 +50,7 @@ const DOCK_WARP_RANGE_METERS = 50_000;
 const ACTIVE_STATUSES = new Set(["active", "holding"]);
 const repo = createTableRepository("service:playerbots", { strict: true });
 const runningBots = new Set();
+const supplyOwners = new Map();
 let cycleMapCache = null;
 let legacyCycleMapCache = null;
 
@@ -1117,6 +1118,11 @@ async function buyFromBestAsk(cycle, bot, typeID, neededUnits, kind, atStationID
 function beginSupplyPurchase(characterID, cycleID, stationID, typeID, requestedUnits, unitPrice, sellerID) {
   const id = normalizePositiveInteger(characterID);
   if (!id || runningBots.has(id)) return { success: false, reason: "buyer-busy" };
+  const interruptions = require("./playerBotInterruptRuntime");
+  if (interruptions.hasPending(id) || require("./playerBotLocalDefenseAdapter").hasLease(id))
+    return { success: false, reason: "buyer-emergency-busy" };
+  const owner = interruptions.acquire(id, "supply-contract", cycleID);
+  if (!owner) return { success: false, reason: "buyer-busy" };
   runningBots.add(id);
   let acquired = true;
   try {
@@ -1141,15 +1147,19 @@ function beginSupplyPurchase(characterID, cycleID, stationID, typeID, requestedU
     cycle.pending = { action: "supply-contract", token, sellerID: Number(sellerID), typeID: Number(typeID), units, price: total,
       baselineUnits: countUnits(id, stationID, typeID), baselineBalance: getBalance(id), startedAt: new Date().toISOString() };
     saveCycle(cycle);
+    supplyOwners.set(id, { token, owner });
     acquired = false;
     return { success: true, token, units, price: total };
   } finally {
-    if (acquired) runningBots.delete(id);
+    if (acquired) { runningBots.delete(id); interruptions.release(owner); }
   }
 }
 
 function finishSupplyPurchase(characterID, token, result) {
   const id = normalizePositiveInteger(characterID);
+  const reservation = supplyOwners.get(id);
+  if (!reservation) return { success: false, reason: "supply-owner-missing" };
+  if (reservation && reservation.token !== token) return { success: false, reason: "supply-owner-mismatch" };
   try {
     const cycle = getCycle(id);
     const pending = cycle && cycle.pending;
@@ -1172,6 +1182,11 @@ function finishSupplyPurchase(characterID, token, result) {
     return { success: true, units: observedUnits, spent: observedSpend };
   } finally {
     runningBots.delete(id);
+    if (reservation) {
+      supplyOwners.delete(id);
+      require("./playerBotInterruptRuntime").release(reservation.owner);
+      require("./playerBotOperationRuntime").drainInterruptions(id);
+    }
   }
 }
 
@@ -2204,8 +2219,14 @@ const STAGES = {
 };
 
 async function advanceCycle(characterID) {
+  if (require("./playerBotLocalDefenseAdapter").hasLease(characterID)) return { delayMs: 1000, busy: true };
   const id = normalizePositiveInteger(characterID);
-  if (runningBots.has(id)) return { delayMs: STEP_DELAY_MS, busy: true };
+  const interruptions = require("./playerBotInterruptRuntime");
+  if (runningBots.has(id) || interruptions.isBusy(id)) return { delayMs: 1000, busy: true };
+  const operations = require("./playerBotOperationRuntime");
+  operations.drainInterruptions(id);
+  if (interruptions.hasPending(id)) return { delayMs: 1000, interrupted: true };
+  if (operations.hasActiveOperation(id)) return { delayMs: 1000, interrupted: true };
   const cycle = getCycle(id);
   const recoverableListingReview = cycle && cycle.status === "review" &&
     cycle.pending && cycle.pending.action === "list" &&
@@ -2236,8 +2257,12 @@ async function advanceCycle(characterID) {
   const handler = STAGES[cycle.stage];
   if (!handler) return block(cycle, "blocked", `Unknown industry stage ${cycle.stage}.`);
   if (cycle.status === "holding") cycle.status = "active";
+  const owner = interruptions.acquire(id, "industry", cycle.cycleID);
+  if (!owner) return { delayMs: 1000, busy: true };
   runningBots.add(id);
   let result;
+  let interrupted = false;
+  let handlerFailed = false;
   let capacityReason = "";
   try {
     result = await handler(cycle, bot);
@@ -2247,11 +2272,16 @@ async function advanceCycle(characterID) {
       capacityReason = String(error.message || "System actor capacity reached.");
     } else {
       const latest = getCycle(id) || cycle;
-      return block(latest, "holding", `Error during ${latest.stage}: ${String(error && error.message || error).slice(0, 200)}`);
+      handlerFailed = true;
+      result = block(latest, "holding", `Error during ${latest.stage}: ${String(error && error.message || error).slice(0, 200)}`);
     }
   } finally {
     runningBots.delete(id);
+    interruptions.release(owner);
+    interrupted = operations.drainInterruptions(id);
   }
+  if (interrupted) return { delayMs: 1000, interrupted: true };
+  if (handlerFailed) return result;
   if (capacityReason) {
     const queued = pauseForCapacity(id, capacityReason);
     return queued.success

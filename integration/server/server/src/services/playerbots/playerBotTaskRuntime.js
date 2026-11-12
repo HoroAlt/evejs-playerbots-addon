@@ -293,7 +293,10 @@ function claimNextTask(options = {}) {
     .sort((left, right) => Number(right.priority) - Number(left.priority) || Date.parse(left.createdAt) - Date.parse(right.createdAt));
   for (const task of tasks) {
     const provider = getAvailableProviders(task, bots).find((candidate) =>
-      !allowedProviderIDs || allowedProviderIDs.has(Number(candidate.characterID)),
+      (!allowedProviderIDs || allowedProviderIDs.has(Number(candidate.characterID))) &&
+      !require("./playerBotInterruptRuntime").hasPending(candidate.characterID) &&
+      !require("./playerBotLocalDefenseAdapter").hasLease(candidate.characterID) &&
+      !require("./playerBotInterruptRuntime").isBusy(candidate.characterID),
     );
     if (!provider) continue;
     const leasedTask = mutableTask(queue, task.taskID);
@@ -682,6 +685,10 @@ function requestExtractorMaintenanceBatch(bots = []) {
 }
 
 module.exports = {
+  hasBlockingLease(characterID) {
+    return Object.values(readQueue().tasks).some(task => task?.status === "leased" &&
+      Number(task.providerCharacterID) === Number(characterID) && task.kind !== "playerbot.space.route");
+  },
   MAX_ATTEMPTS,
   cancelTask,
   claimNextTask,
