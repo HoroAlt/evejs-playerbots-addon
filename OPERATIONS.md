@@ -782,6 +782,29 @@ For a manual rollback, restore the files listed in the install's
 run, remove only the `EVEJS_PLAYER_BOTS_ADDON_TOKEN` line from `.env`. Keep the
 backup directory until the rollback is confirmed.
 
+## Corporation-wide orders
+
+`/bots corp` (also `/playerbots corp`) gives orders to every playerbot in a
+corporation. Members of the corporation and staff can use it; only the CEO or
+staff can change the saved HQ.
+
+```text
+/bots corp recall [corporationID] [station|structure <id>]
+/bots corp work   [corporationID] [auto|mine|pi|director] [trips <n>]
+/bots corp status [corporationID]
+/bots corp hq     [corporationID] [list | set <structureOrStationID> | clear]
+```
+
+`recall` stops each pilot's work, sends it to the corporation HQ and pauses it
+once docked. Recall to an NPC station uses the durable relocation operation;
+recall to a corporation structure pauses the pilot at once and steps it there,
+without its usual threat responses, so use it in safe space. A pilot whose
+structure trip fails is released back to the director. `work` releases the
+corporation and starts mining around the HQ (or the nearest safe belts) and
+PI setup, or leaves the pilots to the director. Orders are kept in memory:
+after a restart, run `recall` or `work` again; `status` lists held pilots that
+are not at the HQ. Saved HQs are stored in the game store.
+
 ## Optional local defense
 
 See [Local defense and safe task resumption](LOCAL_DEFENSE.md) for explicit enablement, responder eligibility, policy settings, safe disengagement and tests. The feature is disabled by default.

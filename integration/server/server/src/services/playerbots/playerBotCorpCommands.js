@@ -2,6 +2,7 @@
 
 /*
  * /bots corp commands for playerbot corporations (also /playerbots corp ...).
+ * Contributed by Luna.
  *
  *   /bots corp recall [corporationID] [station|structure <id>]
  *   /bots corp work   [corporationID] [auto|mine|pi|director] [trips <n>] [station|structure <id>]
@@ -9,9 +10,8 @@
  *   /bots corp hq     [corporationID] [list | set <structureOrStationID> | clear]
  *   /bots corp help
  *
- * This file is an add-on. It does not edit any EveJS or Playerbots file: it is
- * loaded by corpCommandsPreload.js and only calls exported runtime functions
- * the /playerbots chat commands already use.
+ * The chat command router calls handle(); this module only uses exported
+ * runtime functions the /playerbots chat commands already use.
  *
  * Destination ("HQ") resolution, first match wins:
  *   1. station|structure <id> on the command (this order only);
@@ -27,26 +27,19 @@
  *   file steps it there itself with the same exported helpers the route and
  *   relocation code use (advanceSystemRoute between systems, travelToStation
  *   inside the destination system). Paused pilots skip their own threat
- *   responses, so structure recalls are best used in safe space.
+ *   responses, so structure recalls are best used in safe space. A pilot whose
+ *   structure trip fails or times out is released again instead of being left
+ *   paused in space.
  * work: clears the pause and starts mining (from the HQ when its system has
  *   safe belts, otherwise from the nearest safe belt system) and/or PI colony
  *   setup. Everything else is left to the normal director.
  *
  * Orders live in memory. After a server restart, relocations to NPC stations
  * continue (durable operations) but holds and structure trips are not
- * re-applied: run /bots corp recall again, it is idempotent. Saved HQs persist in
- * hq.json under CORP_COMMANDS_DATA_DIR (default /var/lib/evejs/corp-commands
- * when that directory exists, otherwise ./data beside this file).
+ * re-applied: run /bots corp recall again (it is idempotent) or /bots corp work.
+ * /bots corp status counts pilots that are held away from the HQ. Saved HQs
+ * persist in the playerBots game-store table.
  */
-
-const fs = require("fs");
-const path = require("path");
-
-// Works from addons/corp-commands/ (server/src is a sibling tree) and from
-// server/src/services/playerbots/ (the server tree itself).
-const ADDON_RELATIVE_SRC = path.resolve(__dirname, "..", "..", "server", "src");
-const SERVER_SRC = process.env.EVEJS_SERVER_SRC ||
-  (fs.existsSync(ADDON_RELATIVE_SRC) ? ADDON_RELATIVE_SRC : path.resolve(__dirname, "..", ".."));
 
 const TICK_MS = 2000;
 const BATCH_PER_TICK = 25;
@@ -60,33 +53,25 @@ const COMBAT_SPECIALTIES = new Set(["security", "piracy", "sovereignty"]);
 const LIST_LIMIT = 15;
 
 function load(relativePath) {
-  return require(path.join(SERVER_SRC, relativePath));
+  return require(`../../${relativePath}`);
 }
 
-function dataDirectory() {
-  if (process.env.CORP_COMMANDS_DATA_DIR) return process.env.CORP_COMMANDS_DATA_DIR;
-  if (process.env.EVEJS_DATA_ROOT) return path.join(process.env.EVEJS_DATA_ROOT, "corp-commands");
-  return fs.existsSync("/var/lib/evejs")
-    ? "/var/lib/evejs/corp-commands"
-    : path.join(__dirname, "data");
-}
+const HQ_TABLE = "playerBots";
+const HQ_PATH = "/_corpCommandHeadquarters";
 
 function defaultHqStore() {
-  const file = () => path.join(dataDirectory(), "hq.json");
+  const repo = load("gameStore/tableRepository").createTableRepository("service:playerbots", { strict: true });
   return {
     read() {
-      try {
-        const parsed = JSON.parse(fs.readFileSync(file(), "utf8"));
-        return parsed && typeof parsed === "object" ? parsed : {};
-      } catch (error) {
-        return {};
-      }
+      repo.ensureTable(HQ_TABLE);
+      const result = repo.read(HQ_TABLE, HQ_PATH);
+      return result.success && result.data && typeof result.data === "object" ? { ...result.data } : {};
     },
     write(value) {
-      fs.mkdirSync(dataDirectory(), { recursive: true });
-      const temporary = `${file()}.tmp`;
-      fs.writeFileSync(temporary, JSON.stringify(value, null, 2));
-      fs.renameSync(temporary, file());
+      repo.ensureTable(HQ_TABLE);
+      const result = repo.write(HQ_TABLE, HQ_PATH, value);
+      if (!result || !result.success) throw new Error(result && result.errorMsg || "PLAYERBOT_CORP_HQ_WRITE_FAILED");
+      if (typeof repo.flushTableSync === "function") repo.flushTableSync(HQ_TABLE);
     },
   };
 }
@@ -299,7 +284,7 @@ function checkStructureAccess(bot, headquarters) {
   return docking && docking.success ? "" : `docking is refused (${docking && docking.errorMsg || "no permission"})`;
 }
 
-function advanceRecallStructure(bot, headquarters, entry) {
+function advanceRecallStructure(bot, headquarters, entry, order = null) {
   const operations = state.deps.operations();
   const tasks = state.deps.tasks();
   const now = state.deps.now();
@@ -352,6 +337,7 @@ function advanceRecallStructure(bot, headquarters, entry) {
   Promise.resolve()
     .then(() => operations.travelToStation(entry.travel, bot, headquarters.stationID, TRAVEL_STORE))
     .then((step) => {
+      if (order && order.cancelled) return;
       if (step && step.blocked) entry.stepError = step.message;
       else if (step && Number(step.delayMs) > 0) entry.nextAtMs = state.deps.now() + Number(step.delayMs);
     })
@@ -360,10 +346,19 @@ function advanceRecallStructure(bot, headquarters, entry) {
   return { state: "enRoute" };
 }
 
-function advanceRecall(bot, headquarters, entry = {}) {
+function advanceRecall(bot, headquarters, entry = {}, order = null) {
   return headquarters.kind === "structure"
-    ? advanceRecallStructure(bot, headquarters, entry)
+    ? advanceRecallStructure(bot, headquarters, entry, order)
     : advanceRecallStation(bot, headquarters);
+}
+
+// Drops a corporation's earlier recall and work orders. A structure trip step
+// already in flight finishes, but its result is ignored.
+function cancelOrders(corporationID) {
+  const order = state.orders.get(corporationID);
+  if (order) order.cancelled = true;
+  state.orders.delete(corporationID);
+  state.jobs.delete(corporationID);
 }
 
 function createRecallOrder(corporationID, headquarters, bots, context) {
@@ -402,8 +397,24 @@ function notify(context, message) {
   }
 }
 
+// A structure trip pauses the pilot in space. If the trip does not finish,
+// hand the pilot back to the director rather than leave it paused there.
+function releaseStrandedPilot(order, characterID) {
+  if (order.headquarters.kind !== "structure") return;
+  const bot = botsOf(order.corporationID).find((entry) => Number(entry.characterID) === Number(characterID));
+  if (!bot || !isPaused(bot) || dockedStationOf(bot) === order.headquarters.stationID) return;
+  try {
+    state.deps.tasks().resumeBot(bot);
+  } catch (error) {
+    warn(`Could not release ${bot.characterName} after a failed structure recall: ${error.message}`);
+  }
+}
+
 function finishOrder(order, reason) {
   state.orders.delete(order.corporationID);
+  if (reason === "expired") {
+    for (const characterID of order.pending.keys()) releaseStrandedPilot(order, characterID);
+  }
   const detail = order.failed ? ` ${order.failed} could not be recalled (${summarizeFailures(order.failures)}).` : "";
   notify(order.context, reason === "expired"
     ? `Recall for corporation ${order.corporationID} timed out with ${order.pending.size} pilot(s) unfinished. Run /bots corp status ${order.corporationID}.`
@@ -422,7 +433,7 @@ function runRecallBatch(order, budget) {
     }
     let result;
     try {
-      result = advanceRecall(bot, order.headquarters, entry);
+      result = advanceRecall(bot, order.headquarters, entry, order);
     } catch (error) {
       result = { state: "retry", message: error.message };
     }
@@ -432,12 +443,14 @@ function runRecallBatch(order, budget) {
     } else if (result.state === "failed") {
       order.failed += 1;
       order.failures.push({ name: bot.characterName, message: result.message });
+      releaseStrandedPilot(order, characterID);
     } else if (result.state === "retry") {
       entry.attempts += 1;
       entry.message = result.message || "";
       if (entry.attempts >= MAX_RETRIES) {
         order.failed += 1;
         order.failures.push({ name: bot.characterName, message: entry.message });
+        releaseStrandedPilot(order, characterID);
       } else {
         order.pending.set(characterID, entry);
       }
@@ -597,8 +610,7 @@ function parseArguments(argumentText) {
 function commandRecall(parsed, corporationID, bots, context) {
   const headquarters = resolveHeadquarters(corporationID, parsed.station);
   if (headquarters.error) return headquarters.error;
-  state.orders.delete(corporationID);
-  state.jobs.delete(corporationID);
+  cancelOrders(corporationID);
   createRecallOrder(corporationID, headquarters, bots, context);
   ensureTimer();
   const caution = headquarters.kind === "structure"
@@ -609,7 +621,8 @@ function commandRecall(parsed, corporationID, bots, context) {
 }
 
 function commandWork(parsed, corporationID, bots, context) {
-  state.orders.delete(corporationID);
+  // A later "work director" must not leave an earlier "work mine" queued.
+  cancelOrders(corporationID);
   const resumed = state.deps.tasks().resumeBotsInCorporation(corporationID);
   if (!resumed.success) {
     return `Could not release the corporation: ${(resumed.errors || []).join("; ") || resumed.message || "error"}.`;
@@ -637,7 +650,7 @@ function commandWork(parsed, corporationID, bots, context) {
 function commandStatus(corporationID, bots) {
   const operations = state.deps.operations();
   const headquarters = resolveHeadquarters(corporationID, 0);
-  const counts = { atHq: 0, held: 0, travelling: 0, working: 0, idle: 0 };
+  const counts = { atHq: 0, held: 0, heldAway: 0, travelling: 0, working: 0, idle: 0 };
   const kinds = new Map();
   for (const bot of bots) {
     const operation = operations.getOperation(bot.characterID);
@@ -645,6 +658,7 @@ function commandStatus(corporationID, bots) {
     const atHq = !headquarters.error && dockedStationOf(bot) === headquarters.stationID;
     if (atHq) counts.atHq += 1;
     if (isPaused(bot)) counts.held += 1;
+    if (isPaused(bot) && !atHq && !(running && operation.kind === "relocate")) counts.heldAway += 1;
     if (running && operation.kind === "relocate") counts.travelling += 1;
     else if (running) {
       counts.working += 1;
@@ -665,6 +679,9 @@ function commandStatus(corporationID, bots) {
     `Corporation ${corporationID}: ${bots.length} pilot(s); HQ ${headquarters.error ? "unavailable" : formatDestination(headquarters)}.`,
     `Docked at HQ ${counts.atHq}; held (paused) ${counts.held}; travelling ${counts.travelling}; working ${counts.working}${work ? ` (${work})` : ""}; idle ${counts.idle}.`,
     order ? `Recall in progress: ${order.pending.size} pilot(s) still pending, ${order.held} held, ${order.failed} failed.` : "No recall in progress.",
+    ...(counts.heldAway && !order
+      ? [`${counts.heldAway} held pilot(s) are not at the HQ (for example after a server restart); run /bots corp recall ${corporationID} or /bots corp work ${corporationID}.`]
+      : []),
   ].join("\n");
 }
 
@@ -718,7 +735,7 @@ function commandHeadquarters(parsed, session, corporationID) {
 
 // Appended (never substituted) to the existing /bots help text by the preload.
 const BOTS_HELP_ADDENDUM = [
-  "Corporation commands: /bots corp <recall|work|status|hq|help> ... (also /playerbots corp ...; the shortcuts /corp, /corpbot and /corpbots work when the add-on preload is enabled)",
+  "Corporation commands: /bots corp <recall|work|status|hq|help> ... (also /playerbots corp ...)",
   "/bots corp recall [corporationID] [station|structure <id>] - stop every pilot's work, send them to the corporation HQ, dock and hold (pause) them there",
   "/bots corp work [corporationID] [auto|mine|pi|director] [trips <n>] [station|structure <id>] - release the hold, then start work. auto: planetary pilots set up PI, security/piracy/sovereignty pilots go back to the director, everyone else mines",
   "/bots corp status [corporationID] - pilots docked at the HQ, held, travelling, working (by operation) and idle, plus recall progress",
@@ -730,7 +747,7 @@ const BOTS_HELP_ADDENDUM = [
   "HQ choice, first match wins: station|structure <id> on the command (that order only); the HQ saved with /bots corp hq set; the corporation's headquarters NPC station from the corporation window. A saved HQ that is destroyed, unanchoring, no longer owned or without docking blocks recall with a message instead of diverting pilots.",
   "Recall to an NPC station uses the durable relocate operation (undock, route, warp, dock) and pauses each pilot once docked. Recall to a structure pauses the pilot at once and steps it there with the same stargate-route and dock helpers; docking permission is checked first, and pilots in an industry cycle are reported rather than pulled away.",
   "Paused pilots skip their own threat responses, so use structure recalls in safe space. /bots corp work resumes the corporation and cancels a pending recall; mining uses the HQ as its home only if its system is high-security with belts (and a structure has a quantum core), otherwise the nearest safe belts.",
-  "Limits: orders are kept in memory, so after a server restart run /bots corp recall again (it is safe to repeat). Raise EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM (default 30) to at least the largest corporation, or the director will move pilots out of the HQ system after /bots corp work. Progress and results arrive as chat messages.",
+  "Limits: orders are kept in memory, so after a server restart run /bots corp recall or /bots corp work again (both are safe to repeat). Raise EVEJS_PLAYER_BOTS_MAX_PER_SYSTEM (default 30) to at least the largest corporation, or the director will move pilots out of the HQ system after /bots corp work. Progress and results arrive as chat messages.",
   "Per-pilot equivalents: /playerbots route|dock|undock|pause|resume|op stop|mine|colony <bot> ... (listed above). /bots corp applies them to a whole corporation.",
 ].join("\n");
 
@@ -779,7 +796,7 @@ module.exports = {
   configure,
   reset,
   _testing: {
-    parseArguments, advanceRecall, startWorkForBot, tick, state,
+    parseArguments, advanceRecall, startWorkForBot, tick, state, commandStatus,
     TICK_MS, BATCH_PER_TICK, MAX_RETRIES, STEP_DELAY_MS,
   },
 };

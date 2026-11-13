@@ -2206,3 +2206,30 @@ tests ship in the public repository under `tests/`.
 
 Live behaviour: local defense was not enabled on the remote server, and the
 other changes have not yet been observed in live play.
+
+## Corporation-wide orders from Luna — add-on 0.2.145, 13 Nov 2026
+
+Luna's `/bots corp recall|work|status|hq` commands were submitted on Luna's
+behalf as pull request #8 (#9 carried the same code plus Luna's original
+archive, which was checked to match and not committed). Review fixes:
+
+- `work director` after `work mine` left the mining job queued; any new order
+  now replaces the corporation's earlier recall and work orders.
+- A structure trip step still in flight when an order was cancelled could
+  record a late result; it is now ignored.
+- A pilot whose structure recall failed or timed out stayed paused in space
+  without threat responses; it is now released to the director.
+- After a restart, pilots held by an unfinished recall stay paused; `status`
+  now lists them with the commands that release them.
+- The saved HQ was written to a JSON file outside the game store and the
+  module could load server code from a directory named by an environment
+  variable; the HQ is now kept in the `playerBots` table and the module uses
+  normal relative requires.
+- A Compose volume added for the add-on container pointed at a path that does
+  not exist in a standard deployment and would have hidden the add-on's own
+  files; it was not taken.
+
+Still to check in live play: recall and work with a full corporation, and
+structure recalls through low-security space. Work for a corporation whose HQ
+system has no safe belts is assigned outside the HQ area by design.
+

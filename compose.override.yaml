@@ -64,8 +64,6 @@ services:
       NODE_OPTIONS: --max-old-space-size=384
     networks:
       - default
-    volumes:
-      - ./addons/playerbots:/app/addons/playerbots:ro
     ports:
       - "${EVEJS_PLAYER_BOTS_DASHBOARD_BIND:-0.0.0.0}:${EVEJS_PLAYER_BOTS_DASHBOARD_PORT:-8080}:8080"
     restart: "no"
