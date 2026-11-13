@@ -593,6 +593,9 @@ async function handleIndustryCycleJob(job = {}) {
 const SKILL_TRAINING_COOLDOWN_MS = 30 * 60 * 1000;
 // characterID -> earliest ms at which this pilot may train again.
 const skillTrainingNextAt = new Map();
+// One diagnostic line per pilot, so a training request that does not queue can
+// be told apart from one that was never attempted.
+const skillTrainingReported = new Set();
 
 function skillTrainingRoleFor(bot) {
   const specialty = String(bot && bot.specialty || "");
@@ -631,6 +634,16 @@ async function ensureBotSkillTraining(bot) {
       require("../../utils/logger").info(
         `[PlayerBots] Skill training queued char=${characterID} role=${role} hull=${result.targetHull || "?"} ` +
           `skills=${(result.requiredSkills || []).length} endsAt=${result.queueEndTime || "unknown"}`,
+      );
+    } else if (!skillTrainingReported.has(characterID)) {
+      skillTrainingReported.add(characterID);
+      require("../../utils/logger").info(
+        `[PlayerBots] Skill training deferred char=${characterID} role=${role} ` +
+          `hull=${Number(result && result.targetHull) || "?"} ready=${Boolean(result && result.ready)} ` +
+          `missing=${(result && result.requiredSkills || []).length} ` +
+          `reason=${result && (result.noRequirements ? "no-requirements"
+            : result.noTarget ? "no-target"
+              : (result.requiredSkills || []).length ? "already-queued" : "already-trained")}`,
       );
     }
     return result;
