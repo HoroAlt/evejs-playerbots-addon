@@ -32,6 +32,14 @@ const MAX_CORPORATE_LISTINGS = 5_000;
 // Bots manufacture and sell at their own hub, never in Jita; Jita is only a
 // fallback source of inputs (see playerBotEconomyRuntime).
 const DEFAULT_MARKET_STATION_ID = require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID;
+
+// The bot's own empire hub (see playerBotEconomyRuntime).
+function hubStationFor(botOrCharacterID) {
+  const economy = require("./playerBotEconomyRuntime");
+  return typeof economy.getHubStationIDForBot === "function"
+    ? economy.getHubStationIDForBot(botOrCharacterID)
+    : DEFAULT_MARKET_STATION_ID;
+}
 const LIST_UNDERCUT = 0.98;
 const MAX_CYCLE_RUNS = 100;
 const MAX_CYCLE_SPEND_ISK = 1_000_000_000;
@@ -674,7 +682,7 @@ function startCycle(botQuery, blueprintTypeID, runs, maxSpend, options = {}) {
   if (!(normalizedSpend >= 1) || normalizedSpend > MAX_CYCLE_SPEND_ISK) {
     return { success: false, message: `Maximum cycle spend must be between 1 and ${MAX_CYCLE_SPEND_ISK.toLocaleString("en-US")} ISK.` };
   }
-  const stationID = normalizePositiveInteger(options.stationID) || DEFAULT_MARKET_STATION_ID;
+  const stationID = normalizePositiveInteger(options.stationID) || hubStationFor(bot);
   const station = worldData.getStationByID(stationID);
   const structure = !station ? worldData.getStructureByID(stationID) : null;
   const facility = station || structure;
@@ -1263,7 +1271,7 @@ function redirectLegacyJitaCycle(cycle, run, economy) {
     seen.add(typeID);
     return true;
   });
-  cycle.stationID = economy.BOT_HUB_STATION_ID;
+  cycle.stationID = hubStationFor(cycle.characterID);
   record(cycle, `Legacy cycle in Jita: moving the blueprint and inputs to hub ${cycle.stationID}.`);
   saveCycle(cycle);
   return true;
@@ -1999,11 +2007,12 @@ async function stepSell(cycle, bot) {
       cycle.relocatePhase = "to-hub";
       saveCycle(cycle);
     }
-    const step = await operations.travelToStation(cycle, bot, economy.BOT_HUB_STATION_ID, CYCLE_STORE);
+    const hubStationID = hubStationFor(bot);
+    const step = await operations.travelToStation(cycle, bot, hubStationID, CYCLE_STORE);
     if (step) return step;
     inventory.unloadCargo(bot);
-    record(cycle, `Moved the product from Jita to hub ${economy.BOT_HUB_STATION_ID} for sale.`);
-    cycle.stationID = economy.BOT_HUB_STATION_ID;
+    record(cycle, `Moved the product from Jita to hub ${hubStationID} for sale.`);
+    cycle.stationID = hubStationID;
     cycle.relocatePhase = null;
     saveCycle(cycle);
     return { delayMs: STEP_DELAY_MS };
@@ -2050,11 +2059,12 @@ async function stepSell(cycle, bot) {
     }).catch(() => null);
     cycle.saleRouteAttempted = true;
     const economy = require("./playerBotEconomyRuntime");
+    const hubStationID = hubStationFor(bot);
     const fallbackStationID = cycle.structureFacility === true &&
       Number(cycle.stationID) === Number(cycle.industryFacilityID) &&
-      !economy.isJitaStation(economy.BOT_HUB_STATION_ID) &&
-      worldData.getStationByID(economy.BOT_HUB_STATION_ID)
-      ? Number(economy.BOT_HUB_STATION_ID)
+      !economy.isJitaStation(hubStationID) &&
+      worldData.getStationByID(hubStationID)
+      ? Number(hubStationID)
       : 0;
     const destinationStationID = Number(destination && destination.stationID) || fallbackStationID;
     if (destinationStationID && destinationStationID !== Number(cycle.stationID)) {

@@ -78,6 +78,14 @@ let legacyOperationMapCache = null;
 let operationHistoryCache = null;
 let dashboardOperationPageIndex = null;
 
+// The bot's own empire hub (see playerBotEconomyRuntime).
+function hubStationFor(bot) {
+  const economy = require("./playerBotEconomyRuntime");
+  return typeof economy.getHubStationIDForBot === "function"
+    ? economy.getHubStationIDForBot(bot)
+    : DEFAULT_MARKET_STATION_ID;
+}
+
 function getPlayerBots() {
   return require("./playerBotRuntime");
 }
@@ -925,7 +933,7 @@ async function advanceMining(operation, bot) {
   if (operation.optimizeMarketDestination === undefined) operation.optimizeMarketDestination = true;
   if (operation.marketStationID === undefined ||
       require("./playerBotEconomyRuntime").isJitaStation(operation.marketStationID)) {
-    operation.marketStationID = DEFAULT_MARKET_STATION_ID;
+    operation.marketStationID = hubStationFor(bot);
   }
   const space = getSpace();
   const inventory = getInventory();
@@ -1889,10 +1897,10 @@ function getUpgradePackageNeeds(rung) {
 
 function findUpgradeMarketStation(bot, rungOrOperation) {
   const needs = getUpgradePackageNeeds(rungOrOperation);
-  if (!needs.length) return DEFAULT_MARKET_STATION_ID;
+  if (!needs.length) return hubStationFor(bot);
   const economy = require("./playerBotEconomyRuntime");
   const candidates = economy.findSellStationsForPackage(needs);
-  if (!candidates.length) return DEFAULT_MARKET_STATION_ID;
+  if (!candidates.length) return hubStationFor(bot);
   const outsideJita = candidates.filter((candidate) => !candidate.isJita);
   const preferred = outsideJita.length ? outsideJita : candidates.filter((candidate) => candidate.isJita);
   const stationCandidatesBySystem = new Map();
@@ -1927,7 +1935,7 @@ function findUpgradeMarketStation(bot, rungOrOperation) {
     right.security - left.security ||
     left.estimatedCost - right.estimatedCost ||
     left.stationID - right.stationID);
-  return Number(routeCandidates[0] && routeCandidates[0].stationID) || DEFAULT_MARKET_STATION_ID;
+  return Number(routeCandidates[0] && routeCandidates[0].stationID) || hubStationFor(bot);
 }
 
 function retargetUnpurchasedUpgrade(characterID, stationID) {
@@ -3526,8 +3534,8 @@ function startPlanetaryCollection(botQuery, options = {}) {
       maxTaxPerCycle: Math.max(0, Number(exportRequest.maxTaxPerCycle) || 0),
       commodities,
     } : null,
-    marketStationID: require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID,
-    homeStationID: require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID,
+    marketStationID: hubStationFor(bot),
+    homeStationID: hubStationFor(bot),
     unitsSold: 0, proceeds: 0, unitsListed: 0, brokerFees: 0,
     optimizeMarketDestination: true,
   });
@@ -4546,7 +4554,7 @@ function startFleetAttack(botQuery, target = {}) {
   }
   const economy = require("./playerBotEconomyRuntime");
   if (!homeStationID || economy.isJitaStation(homeStationID)) {
-    homeStationID = Number(economy.BOT_HUB_STATION_ID) || 0;
+    homeStationID = Number(hubStationFor(bot)) || 0;
   }
   if (!homeStationID) return { success: false, message: `No safe home station is configured for ${bot.characterName}.` };
 
@@ -4813,7 +4821,7 @@ function startMining(botQuery, maxTrips = 1, options = {}) {
     // starter hull there, send it to the nearest safe belt system outside Jita.
     const excludedSystems = [require("./playerBotEconomyRuntime").JITA_SYSTEM_ID];
     const nearest = localBase || findNearestMiningStation(currentSystemID, 0.45, 15, excludedSystems) ||
-      findNearestMiningStation(stationSystemID(DEFAULT_MARKET_STATION_ID), 0.45, 15, excludedSystems);
+      findNearestMiningStation(stationSystemID(hubStationFor(bot)), 0.45, 15, excludedSystems);
     if (!nearest) return { success: false, message: "No high-security system with an asteroid belt and station was found within 15 jumps." };
     homeStationID = currentStationID && !economy.isJitaStation(currentStationID) &&
       stationSystemID(currentStationID) === nearest.systemID ? currentStationID : nearest.stationID;
@@ -4844,7 +4852,7 @@ function startMining(botQuery, maxTrips = 1, options = {}) {
   }
   const marketStationID = options.marketStationID === null ? null
     : normalizePositiveInteger(options.marketStationID) ||
-      (require("./playerBotEconomyRuntime").isJitaStation(homeStationID) ? DEFAULT_MARKET_STATION_ID : homeStationID);
+      (require("./playerBotEconomyRuntime").isJitaStation(homeStationID) ? hubStationFor(bot) : homeStationID);
   const trips = Math.min(MAX_TRIPS, Math.max(1, normalizePositiveInteger(maxTrips) || 1));
   const operation = baseOperation("mine", bot, {
     stage: "to-home",
@@ -4905,7 +4913,7 @@ function startCombat(botQuery, mode = "security", options = {}) {
     return { success: false, message: `${bot.characterName} needs a complete, online ${shipRole} combat fit with sufficient drone capacity, Dogma range and capacitor stability before starting a ${normalizedMode} patrol.` };
   }
   const combat = require("./playerBotCombatRuntime");
-  const hubStationID = require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID;
+  const hubStationID = hubStationFor(bot);
   const fitProfile = getRoleShipFitProfile(bot, shipRole);
   let miningEscortTarget = null;
   const miningEscortForCharacterID = normalizePositiveInteger(options.miningEscortForCharacterID);
@@ -5085,7 +5093,7 @@ function startSovereignty(botQuery, objective = null, options = {}) {
   const currentStationID = normalizePositiveInteger(character.stationID || character.structureID);
   const homeStationID = currentStationID ||
     Number((worldData.getStationsForSystem(Number(character.solarSystemID) || 0) || [])[0]?.itemID) ||
-    require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID;
+    hubStationFor(bot);
   const operation = baseOperation("sovereignty", bot, {
     stage: "to-system",
     mode: selected.kind === "neutral-hub" ? "initial-claim" : "campaign-support",
@@ -5225,7 +5233,7 @@ function findThreatEvacuationStation(bot) {
   const currentStation = normalizePositiveInteger(character.stationID || character.structureID);
   return currentStation && !economy.isJitaStation(currentStation)
     ? currentStation
-    : normalizePositiveInteger(economy.BOT_HUB_STATION_ID);
+    : normalizePositiveInteger(hubStationFor(bot));
 }
 
 async function advanceThreatRetreat(operation, bot) {

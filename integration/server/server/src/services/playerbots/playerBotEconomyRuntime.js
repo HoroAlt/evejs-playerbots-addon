@@ -15,6 +15,37 @@ const JITA_BUY_STATION_ID = 60003760;
 // New Caldari II - Kaalakiota Corporation Factory: factory, belts in system,
 // 0.95 security, one jump from Jita.
 const BOT_HUB_STATION_ID = 60014935;
+// Each pilot sells, buys and builds from the hub of its own empire, so the
+// roster does not converge on one station. Bots never trade in Jita.
+const REGIONAL_HUB_STATION_IDS = Object.freeze({
+  1: 60014935, // Caldari: New Caldari II - Kaalakiota Corporation Factory
+  2: 60005686, // Minmatar: Hek VIII - Moon 12 - Boundless Creation Factory
+  4: 60008494, // Amarr: Amarr VIII (Oris) - Emperor Family Academy
+  8: 60011866, // Gallente: Dodixie IX - Moon 20 - Federation Navy Assembly Plant
+});
+
+function hubStationForRace(raceID) {
+  return REGIONAL_HUB_STATION_IDS[Number(raceID)] || BOT_HUB_STATION_ID;
+}
+
+// A bot's own hub; pilots created before hubs existed keep New Caldari.
+function getHubStationIDForBot(botOrCharacterID) {
+  let bot = botOrCharacterID && typeof botOrCharacterID === "object" ? botOrCharacterID : null;
+  if (!bot || !Number(bot.hubStationID)) {
+    const characterID = Number(bot ? bot.characterID : botOrCharacterID) || 0;
+    if (characterID) {
+      try {
+        const runtime = require("./playerBotRuntime");
+        const record = typeof runtime.getBotByCharacterID === "function" ? runtime.getBotByCharacterID(characterID) : null;
+        if (record) bot = record;
+      } catch (_) {
+        // Fall through to the shared hub.
+      }
+    }
+  }
+  const hubStationID = Number(bot && bot.hubStationID) || 0;
+  return Object.values(REGIONAL_HUB_STATION_IDS).includes(hubStationID) ? hubStationID : BOT_HUB_STATION_ID;
+}
 
 let marketDatabase = null;
 const MARKET_SUPPLY_CACHE_MS = 30_000;
@@ -350,6 +381,36 @@ function listOpenSellOrders(ownerID, stationID, typeID) {
   }
 }
 
+// A bot's open buy orders, optionally at one station and of one type.
+function listOpenBuyOrders(ownerID, stationID = 0, typeID = 0) {
+  try {
+    const clauses = ["owner_id = ?", "bid = 1", "state = 'open'", "vol_remaining > 0"];
+    const parameters = [Number(ownerID)];
+    if (Number(stationID) > 0) { clauses.push("station_id = ?"); parameters.push(Number(stationID)); }
+    if (Number(typeID) > 0) { clauses.push("type_id = ?"); parameters.push(Number(typeID)); }
+    const orders = openMarketDatabase().prepare(
+      "SELECT order_id, owner_id, station_id, region_id, type_id, price, vol_entered, vol_remaining, escrow " +
+      `FROM market_orders WHERE ${clauses.join(" AND ")}`,
+    ).all(...parameters);
+    return { success: true, orders };
+  } catch (error) {
+    return { success: false, orders: [], error: String(error && error.message || error).slice(0, 160) };
+  }
+}
+
+// Lowest Jita seed ask with stock: the reference traders price against.
+function getJitaReferencePrice(typeID) {
+  try {
+    const row = openMarketDatabase().prepare(
+      "SELECT MIN(price) AS price FROM seed_stock WHERE type_id = ? AND solar_system_id = ? AND quantity > 0",
+    ).get(Number(typeID), JITA_SYSTEM_ID);
+    const price = Number(row && row.price);
+    return Number.isFinite(price) && price > 0 ? price : 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
 function getOpenOrder(orderID) {
   try {
     return openMarketDatabase().prepare(
@@ -376,6 +437,9 @@ function getPlayerBuyOrder(orderID) {
 
 module.exports = {
   BOT_HUB_STATION_ID,
+  REGIONAL_HUB_STATION_IDS,
+  getHubStationIDForBot,
+  hubStationForRace,
   JITA_BUY_STATION_ID,
   JITA_SYSTEM_ID,
   getOpenOrder,
@@ -386,6 +450,8 @@ module.exports = {
   listSellOffers,
   listBotSellOrdersInJita,
   listOpenSellOrders,
+  listOpenBuyOrders,
+  getJitaReferencePrice,
   listPlayerBuyOrders,
   getBotOwnerIDs,
   getListingReferencePrice,

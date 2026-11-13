@@ -60,7 +60,10 @@ function isEligiblePiracyTarget(entity, context = {}) {
   const allianceID = positiveID(entity.allianceID);
   if (corporationID && corporationID === positiveID(context.corporationID)) return false;
   if (allianceID && allianceID === positiveID(context.allianceID)) return false;
-  if (typeof context.isManagedBot === "function" && context.isManagedBot(targetCharacterID)) return false;
+  // Other playerbots are fair targets when bot-versus-bot combat is on; the
+  // corporation, alliance, fleet and Crimewatch checks still apply.
+  if (context.allowManagedBotTargets !== true &&
+      typeof context.isManagedBot === "function" && context.isManagedBot(targetCharacterID)) return false;
   if (typeof context.isFleetMate === "function" && context.isFleetMate(targetCharacterID)) return false;
   if (typeof context.hasCargo !== "function" || context.hasCargo(entity) !== true) return false;
 
@@ -88,7 +91,8 @@ function isEligibleWarTarget(entity, context = {}) {
   const allianceID = positiveID(entity.allianceID);
   if (corporationID && corporationID === positiveID(context.corporationID)) return false;
   if (allianceID && allianceID === positiveID(context.allianceID)) return false;
-  if (typeof context.isManagedBot === "function" && context.isManagedBot(characterID)) return false;
+  if (context.allowManagedBotTargets !== true &&
+      typeof context.isManagedBot === "function" && context.isManagedBot(characterID)) return false;
   if (typeof context.isFleetMate === "function" && context.isFleetMate(characterID)) return false;
   return typeof context.isWarTarget === "function" && context.isWarTarget(characterID) === true;
 }
@@ -117,7 +121,8 @@ function isEligibleDefensiveTarget(entity, context = {}) {
   const allianceID = positiveID(entity.allianceID || entity.session.allianceID);
   if (corporationID && corporationID === positiveID(context.corporationID)) return false;
   if (allianceID && allianceID === positiveID(context.allianceID)) return false;
-  if (typeof context.isManagedBot === "function" && context.isManagedBot(characterID)) return false;
+  if (context.allowManagedBotTargets !== true &&
+      typeof context.isManagedBot === "function" && context.isManagedBot(characterID)) return false;
   if (typeof context.isFleetMate === "function" && context.isFleetMate(characterID)) return false;
 
   const security = Number(context.systemSecurity);

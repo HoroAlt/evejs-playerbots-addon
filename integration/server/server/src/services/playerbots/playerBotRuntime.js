@@ -412,11 +412,47 @@ function createCorporationForSpecialty(specialty, founderID, shardIndex = 0) {
   return result.data.corporationRecord;
 }
 
+// Race, school and name for a new bot. Falls back to the original Caldari
+// start if character-creation data is unavailable.
+function chooseNewBotIdentity() {
+  const roster = Object.values(readBots()).filter((record) => record && Number(record.characterID) > 0);
+  let origin = null;
+  try {
+    const capacity = require("./playerBotCapacityRuntime");
+    const botsPerSystem = new Map();
+    for (const record of roster) {
+      const systemID = capacity.getBotSystemID(record);
+      if (systemID) botsPerSystem.set(systemID, (botsPerSystem.get(systemID) || 0) + 1);
+    }
+    origin = require("./playerBotOriginRuntime").chooseOrigin(botsPerSystem);
+  } catch (_) {
+    origin = null;
+  }
+  const raceID = origin ? origin.raceID : 1;
+  let characterName;
+  try {
+    const { validateCharacterName, VALIDATION_CODE } = require("../character/characterNameRuntime");
+    characterName = require("./playerBotNameRuntime").generateBotName(raceID, {
+      existingNames: roster.map((record) => record.characterName),
+      isValid: (candidate) => validateCharacterName(candidate) === VALIDATION_CODE.VALID,
+    });
+  } catch (_) {
+    characterName = getValidRandomName(1);
+  }
+  return { origin, characterName };
+}
+
 function createBotInTeam(specialty, corporationID, founder = false, shardIndex = 0) {
-  const characterName = getValidRandomName(1);
+  const { origin, characterName } = chooseNewBotIdentity();
   const characterResult = require("../character/charService").createPlayerBotCharacter(
     characterName,
     specialty.id,
+    origin ? {
+      bloodlineID: origin.bloodlineID,
+      schoolID: origin.schoolID,
+      stationID: origin.stationID,
+      gender: origin.gender,
+    } : {},
   );
   if (!characterResult.success) {
     throw new Error(characterResult.errorMsg || "PLAYERBOT_CHARACTER_CREATE_FAILED");
@@ -446,6 +482,10 @@ function createBotInTeam(specialty, corporationID, founder = false, shardIndex =
     currentTask: null,
     createdAt: new Date().toISOString(),
     founder: Boolean(founder),
+    ...(origin ? {
+      raceID: origin.raceID,
+      hubStationID: require("./playerBotEconomyRuntime").hubStationForRace(origin.raceID),
+    } : {}),
   };
   saveBot(bot, { rosterMembershipChanged: true });
   return bot;

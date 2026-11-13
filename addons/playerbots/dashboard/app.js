@@ -442,20 +442,52 @@ async function saveSettings(event) {
   body.rosterSeedEnabled = form.elements.namedItem("rosterSeedEnabled").checked;
   const button = $("save-settings");
   button.disabled = true;
+  const alert = $("settings-alert");
+  const show = (message) => { alert.textContent = message; alert.classList.remove("hidden"); };
+  let requestError = null;
   try {
     const response = await fetch("/api/settings", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `Settings update failed (${response.status}).`);
-    $("settings-updated").textContent = `Saved ${new Date(data.settings?.updatedAt || Date.now()).toLocaleString()}`;
-    $("settings-alert").textContent = data.settings?.rosterSeedEnabled
-      ? "Settings saved. The separate add-on will seed bounded batches and back off automatically when EveJS is busy."
-      : "Settings saved. Gradual roster seeding is paused.";
-    $("settings-alert").classList.remove("hidden");
+    const data = await response.json().catch(() => ({}));
+    // A 4xx answer is a refusal; the values were not saved.
+    if (response.status >= 400 && response.status < 500) {
+      show(data.error || `Settings were refused (${response.status}).`);
+      return;
+    }
+    if (!response.ok) requestError = new Error(data.error || `Settings update failed (${response.status}).`);
+  } catch (error) {
+    requestError = error;
+  }
+  try {
+    // A busy EveJS can apply the change after the request timed out, so
+    // read the saved settings back and compare before reporting.
+    if (requestError) show(`EveJS did not confirm the change in time (${requestError.message || requestError}). Checking whether it was saved…`);
+    const pending = await confirmSettings(body, requestError ? 6 : 1);
+    if (!pending.length) {
+      $("settings-updated").textContent = `Saved and confirmed ${new Date().toLocaleString()}`;
+      show(body.rosterSeedEnabled
+        ? "Settings saved and confirmed. The separate add-on will seed bounded batches and back off automatically when EveJS is busy."
+        : "Settings saved and confirmed. Gradual roster seeding is paused.");
+    } else {
+      show(`These settings are not saved yet: ${pending.join(", ")}. EveJS may still be busy; press Save settings again to retry.`);
+    }
     await loadSettings();
   } catch (error) {
-    $("settings-alert").textContent = error.message || String(error);
-    $("settings-alert").classList.remove("hidden");
+    show(`Could not read the settings back: ${error.message || error}. Press Save settings again to retry.`);
   } finally { button.disabled = false; }
+}
+
+// Names of submitted settings whose saved value differs, after up to
+// `attempts` reads five seconds apart.
+async function confirmSettings(body, attempts) {
+  let pending = Object.keys(body);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt) await new Promise((resolve) => setTimeout(resolve, 5_000));
+    const data = await getJSON("/api/settings");
+    const saved = data.settings || data;
+    pending = Object.keys(body).filter((key) => saved[key] !== undefined && String(saved[key]) !== String(body[key]));
+    if (!pending.length) return [];
+  }
+  return pending;
 }
 
 function milliseconds(value) {

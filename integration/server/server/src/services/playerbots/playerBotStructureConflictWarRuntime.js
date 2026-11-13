@@ -240,8 +240,138 @@ async function declareStructureConflictWar(bots = [], options = {}) {
   };
 }
 
+// ------------------------------------------------------- rivalry wars
+// Bot-run corporations also fight each other outside null-sec structure
+// disputes: a corporation that owns a structure (its war headquarters) may
+// declare a normal, billed war on another bot-run corporation whose pilots
+// work in the same systems. The usual 24-hour start timer, war bill and
+// Crimewatch rules apply. Few such wars run at once.
+
+const MAX_CONCURRENT_RIVALRY_WARS = 2;
+const RIVALRY_ATTEMPT_INTERVAL_MS = 60 * 60 * 1000;
+const RIVALRY_DECLARER_SPECIALTIES = new Set(["piracy", "security", "sovereignty"]);
+let lastRivalryAttemptAtMs = 0;
+
+function rivalryWarsEnabled() {
+  return String(process.env.EVEJS_PLAYER_BOTS_BOT_VERSUS_BOT ?? "1").trim() !== "0";
+}
+
+function isBotRunCorporation(corporationID, roster) {
+  const corporation = require("../corporation/corporationState").getCorporationRecord(corporationID) || {};
+  if (!corporation.corporationID && !corporation.ceoID) return false;
+  if (corporation.isNPC === true) return false;
+  const ceoID = Number(corporation.ceoID) || 0;
+  return roster.some((bot) => Number(bot.characterID) === ceoID);
+}
+
+function unfinishedWars(wars) {
+  const now = BigInt(Date.now()) * 10_000n + 116_444_736_000_000_000n;
+  return wars.listAllWars().filter((war) => {
+    if (!war.timeFinished) return true;
+    try { return BigInt(String(war.timeFinished)) > now; } catch (_) { return true; }
+  });
+}
+
+// Pure choice of declarer and target from roster facts; exported for tests.
+function chooseRivalry(corporations, options = {}) {
+  const busy = options.corporationsAtWar instanceof Set ? options.corporationsAtWar : new Set();
+  const declarers = corporations
+    .filter((corporation) => corporation.botRun && corporation.warHeadquartersID && !busy.has(corporation.corporationID))
+    .sort((left, right) => Number(right.combatSpecialty) - Number(left.combatSpecialty) ||
+      right.members - left.members || left.corporationID - right.corporationID);
+  for (const declarer of declarers) {
+    const targets = corporations
+      .filter((corporation) => corporation.botRun && corporation.corporationID !== declarer.corporationID &&
+        !busy.has(corporation.corporationID) &&
+        !(declarer.allianceID && corporation.allianceID === declarer.allianceID))
+      .map((corporation) => ({
+        corporation,
+        overlap: [...corporation.systems].filter((systemID) => declarer.systems.has(systemID)).length,
+      }))
+      .sort((left, right) => right.overlap - left.overlap ||
+        right.corporation.members - left.corporation.members ||
+        left.corporation.corporationID - right.corporation.corporationID);
+    if (targets.length) return { declarer, target: targets[0].corporation };
+  }
+  return null;
+}
+
+async function declareRivalryWar(bots = [], options = {}) {
+  if (!rivalryWarsEnabled()) return { declared: false, reason: "bot-versus-bot-disabled" };
+  const nowMs = typeof options.now === "function" ? options.now() : Date.now();
+  if (nowMs - lastRivalryAttemptAtMs < RIVALRY_ATTEMPT_INTERVAL_MS) return { declared: false, reason: "waiting" };
+  lastRivalryAttemptAtMs = nowMs;
+  const roster = Array.isArray(bots) ? bots : [];
+  const excludedCharacterIDs = options.humanControlledBotIDs instanceof Set ? options.humanControlledBotIDs : new Set();
+  const wars = require("../corporation/warRuntimeState");
+  const open = unfinishedWars(wars);
+  const botCorporationIDs = new Set(roster.map((bot) => getCorporationID(bot)).filter(Boolean));
+  const rivalries = open.filter((war) => botCorporationIDs.has(Number(war.declaredByID)) &&
+    botCorporationIDs.has(Number(war.againstID)));
+  if (rivalries.length >= MAX_CONCURRENT_RIVALRY_WARS) return { declared: false, reason: "rivalry-war-limit" };
+  const corporationsAtWar = new Set(open.flatMap((war) => [Number(war.declaredByID), Number(war.againstID)]));
+
+  const capacity = require("./playerBotCapacityRuntime");
+  const structures = require("../structure/structureState").listStructures()
+    .filter((structure) => structure && !structure.destroyedAt && !structure.unanchoring);
+  const corporationState = require("../corporation/corporationState");
+  const byCorporation = new Map();
+  for (const bot of roster) {
+    const corporationID = getCorporationID(bot);
+    if (!corporationID) continue;
+    if (!byCorporation.has(corporationID)) {
+      const record = corporationState.getCorporationRecord(corporationID) || {};
+      const headquarters = structures.find((structure) =>
+        positiveID(structure.ownerCorpID || structure.ownerID) === corporationID);
+      byCorporation.set(corporationID, {
+        corporationID,
+        allianceID: positiveID(record.allianceID),
+        botRun: isBotRunCorporation(corporationID, roster),
+        warHeadquartersID: headquarters ? positiveID(headquarters.structureID || headquarters.itemID) : 0,
+        combatSpecialty: false,
+        members: 0,
+        systems: new Set(),
+      });
+    }
+    const entry = byCorporation.get(corporationID);
+    entry.members += 1;
+    if (RIVALRY_DECLARER_SPECIALTIES.has(String(bot.specialty))) entry.combatSpecialty = true;
+    const systemID = capacity.getBotSystemID(bot);
+    if (systemID) entry.systems.add(systemID);
+  }
+  const choice = chooseRivalry([...byCorporation.values()], { corporationsAtWar });
+  if (!choice) return { declared: false, reason: "no-eligible-bot-rivalry" };
+  const declarerID = choice.declarer.corporationID;
+  const targetID = choice.target.corporationID;
+  if (hasPairWar(wars, declarerID, targetID)) return { declared: false, reason: "pair-already-at-war" };
+  const director = chooseWarDirector(roster, declarerID, excludedCharacterIDs);
+  if (!director) return { declared: false, reason: "no-persisted-corporation-war-director" };
+  try {
+    if (!await ensureWarTreasury(roster, declarerID, targetID, excludedCharacterIDs)) {
+      return { declared: false, reason: "war-treasury-below-reserve" };
+    }
+    await new (require("../corporation/corpRegistryRuntime"))().Handle_DeclareWarAgainst(
+      [targetID, choice.declarer.warHeadquartersID], director.session,
+    );
+  } catch (error) {
+    return { declared: false, reason: String(error && error.message || error).slice(0, 180) };
+  }
+  const war = wars.listWarsForOwner(declarerID)
+    .find((entry) => Number(entry.declaredByID) === declarerID && Number(entry.againstID) === targetID);
+  if (!war) return { declared: false, reason: "war-authority-did-not-confirm-declaration" };
+  return {
+    declared: true,
+    warID: positiveID(war.warID),
+    declaringCorporationID: declarerID,
+    opposingCorporationID: targetID,
+    characterID: Number(director.bot.characterID),
+  };
+}
+
 module.exports = {
+  declareRivalryWar,
   declareStructureConflictWar,
-  _testing: { getEligibleStructureConflict, hasPairWar, hasUnfinishedWar,
+  _testing: { getEligibleStructureConflict, hasPairWar, hasUnfinishedWar, chooseRivalry,
+    resetRivalryClock: () => { lastRivalryAttemptAtMs = 0; },
     WAR_DECLARATION_BILL_ISK, WAR_TREASURY_RESERVE_ISK, WAR_MEMBER_WORKING_RESERVE_ISK },
 };

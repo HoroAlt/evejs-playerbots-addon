@@ -1065,6 +1065,17 @@ async function runAutonomyCycle(options = {}) {
     ? queuedTasks.filter((task) => task.kind === taskKind).length
     : 0;
 
+  let marketMakingSummary = { traders: 0, buyOrdersPlaced: 0, unitsListed: 0, failures: 0 };
+  if (globalBots.length) {
+    try {
+      marketMakingSummary = await require("./playerBotMarketMakerRuntime").runMarketMakerPass(globalBots);
+    } catch (error) {
+      marketMakingSummary.failures += 1;
+      marketMakingSummary.lastError = String(error && error.message || error).slice(0, 180);
+    }
+  }
+  tradeSummary.marketMaking = marketMakingSummary;
+
   let profitShareSummary = { eligibleBots: 0, contributions: 0, amount: 0, failures: 0 };
   if (globalBots.length) {
     try {

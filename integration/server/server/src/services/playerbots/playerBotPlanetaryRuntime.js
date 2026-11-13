@@ -148,7 +148,9 @@ async function readExportUnitValues(bot, planetID) {
   const colony = planetRuntime.getColony(planetID, bot.characterID);
   const commandPin = findCommandPin(colony);
   if (!commandPin) return {};
-  const stationID = Number(require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID) || 0;
+  const economy = require("./playerBotEconomyRuntime");
+  const stationID = Number(typeof economy.getHubStationIDForBot === "function"
+    ? economy.getHubStationIDForBot(bot) : economy.BOT_HUB_STATION_ID) || 0;
   const values = {};
   const trade = require("./playerBotTradeRuntime");
   for (const typeID of Object.keys(normalizeContents(commandPin.contents))) {

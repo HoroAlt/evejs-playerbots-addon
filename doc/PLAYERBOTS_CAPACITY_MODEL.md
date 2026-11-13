@@ -292,7 +292,7 @@ Focused isolated tests check hop bounds, null/low-sec risk and that candidate
 planning does not invoke a Dijkstra search per system. Deploy and measure under
 the same active 685-bot workload before reopening the scaling gate.
 
-The current public package is 0.2.145 (built for EveJS 261108.1). Measure before scaling: its Performance page reports event-loop delay, main-thread CPU, scheduled-work lateness and time per subsystem, so a larger roster can be judged against recorded values instead of a single profile. The clean remote test is configured for
+The current public package is 0.2.146 (built for EveJS 261108.1). Measure before scaling: its Performance page reports event-loop delay, main-thread CPU, scheduled-work lateness and time per subsystem, so a larger roster can be judged against recorded values instead of a single profile. The clean remote test is configured for
 a 500-bot roster, 500 online sessions, and a 500-bot ceiling; all 500 were
 connected in the latest snapshot. The long-term 15,000-pilot roster and
 5,000-online target remain unvalidated.

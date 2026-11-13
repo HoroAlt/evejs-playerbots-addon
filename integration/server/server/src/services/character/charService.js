@@ -2025,7 +2025,9 @@ class CharService extends BaseService {
   }
 }
 
-function createPlayerBotCharacter(name, specialty) {
+// options.bloodlineID and options.schoolID choose the bot's race and starting
+// school (playerbot add-on); without them the bot is a Deteis Caldari, as before.
+function createPlayerBotCharacter(name, specialty, options = {}) {
   const characterName = normalizeNameString(name).trim().replace(/\s+/g, " ");
   if (validateCharacterName(characterName) !== VALIDATION_CODE.VALID) {
     return { success: false, errorMsg: "INVALID_OR_DUPLICATE_BOT_NAME" };
@@ -2033,26 +2035,32 @@ function createPlayerBotCharacter(name, specialty) {
 
   const accountID = reserveAccountID();
   const characterID = reserveCharacterID();
-  const bloodlineID = 1;
+  const bloodlineID = Number(options.bloodlineID) > 0 ? Number(options.bloodlineID) : 1;
   const bloodlineProfile = resolveCharacterCreationBloodlineProfile(
     bloodlineID,
     { raceID: 1, typeID: 1373, corporationID: 1000009 },
   );
   const schoolID = resolveCharacterCreationSchoolIDForRace(
-    11,
+    Number(options.schoolID) > 0 ? Number(options.schoolID) : 11,
     bloodlineProfile.raceID,
     11,
   );
   const raceProfile = getCharacterCreationRace(bloodlineProfile.raceID) || null;
+  // A playerbot starts at its school's own station, not at the new-player
+  // start override that human characters use.
+  const schoolProfile = resolveCharacterCreationSchoolProfile(schoolID, { raceID: bloodlineProfile.raceID });
+  const schoolStationID = Number(options.stationID) ||
+    Number(schoolProfile.startingStations && schoolProfile.startingStations[0]) || 0;
   const starterLocation = resolveStarterLocationContext(
     bloodlineProfile,
     schoolID,
+    schoolStationID ? getStationRecord(null, schoolStationID) : null,
   );
   const now = (BigInt(Date.now()) * 10000n + 116444736000000000n).toString();
   const characterRecord = {
     accountId: accountID,
     characterName,
-    gender: 1,
+    gender: Number(options.gender) === 0 ? 0 : 1,
     bloodlineID,
     ancestryID: 1,
     raceID: bloodlineProfile.raceID,

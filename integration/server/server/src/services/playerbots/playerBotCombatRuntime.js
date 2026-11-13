@@ -5,6 +5,13 @@ const combatPolicy = require("./playerBotCombatPolicy");
 const combatDecision = require("./playerBotCombatDecisionRuntime");
 
 const HUB_STATION_ID = require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID;
+
+// Piracy and war patrols may target other playerbots under the same
+// Crimewatch and war rules as human targets. EVEJS_PLAYER_BOTS_BOT_VERSUS_BOT=0
+// keeps playerbots off each other's target lists.
+function botVersusBotCombatEnabled() {
+  return String(process.env.EVEJS_PLAYER_BOTS_BOT_VERSUS_BOT ?? "1").trim() !== "0";
+}
 const WARP_RANGE_METERS = 50_000;
 const APPROACH_RANGE_METERS = 15_000;
 const DRONE_ATTACK_RANGE_METERS = 15_000;
@@ -673,6 +680,7 @@ function getCombatContext(bot, scene, entity, operation = null) {
     specialSpace: faction.specialSpace === true || faction.wormholeSpace === true,
     position: entity.position,
     isManagedBot: (characterID) => managedBotIDs.has(Number(characterID)),
+    allowManagedBotTargets: botVersusBotCombatEnabled(),
     isFleetMate: (characterID) => {
       if (!ownFleet) return false;
       const targetFleet = fleetRuntime.getFleetForCharacter(Number(characterID));
@@ -2046,6 +2054,7 @@ async function advanceCombat(operation, bot, kit) {
 }
 
 module.exports = {
+  botVersusBotCombatEnabled,
   getCombatContext,
   getControlledDrones,
   launchDrones,

@@ -2233,3 +2233,42 @@ Still to check in live play: recall and work with a full corporation, and
 structure recalls through low-security space. Work for a corporation whose HQ
 system has no safe belts is assigned outside the HQ area by design.
 
+## Population spread, names, market orders and bot-versus-bot combat — add-on 0.2.146, 13 Nov 2026
+
+From a tester's report: bots crowded New Caldari and The Forge, names repeated,
+no market orders were visible outside Jita, and bots never fought each other.
+
+- **Where bots are born and work.** Every bot was a Deteis Caldari and every
+  bot sold, bought and built at one hub station in New Caldari, so the roster
+  converged there whatever the per-system limit. New bots now take a race and
+  one of its starting schools, choosing the school whose system holds the
+  fewest bots, and work from their empire's hub (New Caldari, Amarr, Dodixie
+  or Hek). Relocating pilots take the least crowded system within four jumps
+  of the nearest free one instead of filling the nearest system first.
+- **Names.** 50 first and 50 last names per race instead of 18 by 12 for
+  Caldari only; the least used first name is preferred.
+- **Market orders.** Trade pilots keep standing mineral buy orders at 90% of
+  the Jita price where they are docked and list what they bought at the Jita
+  price, with real ISK through the market authority. Jita itself and the
+  Jita-only seed are unchanged.
+- **Bot-versus-bot combat.** Piracy, war and defensive target rules no longer
+  exclude other playerbots (corporation, alliance and fleet mates still are),
+  and bot-run corporations with a structure as war headquarters declare
+  normal wars on bot-run corporations they share systems with.
+- **Dashboard settings.** After saving, the dashboard reads the settings back
+  and lists any value that EveJS has not applied, including when the request
+  timed out on a busy server.
+
+Remote server: on 13 Nov the live server stopped twice because SQLite stayed
+locked for over a minute and the persistence owner lease expired
+(`PERSISTENCE_OWNER_LEASE_LOST`). The game database had grown to 464 MB,
+mostly `dungeonRuntimeState` (174 MB) and `items` (137 MB). At the
+operator's request the world was reset to a fresh database (backups kept),
+and character orders were removed from the market while the Jita seed was
+restored. Why `dungeonRuntimeState` grows is an EveJS question that was not
+investigated further.
+
+Still to observe in live play: how evenly a full roster spreads, traders'
+orders being filled by miners, and the first bot-versus-bot war, which needs
+a bot corporation to own a structure first.
+

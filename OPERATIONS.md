@@ -782,6 +782,40 @@ For a manual rollback, restore the files listed in the install's
 run, remove only the `EVEJS_PLAYER_BOTS_ADDON_TOKEN` line from `.env`. Keep the
 backup directory until the rollback is confirmed.
 
+## Where bots live
+
+Each new bot gets a race, a bloodline of that race and one of the race's
+starting schools; the school whose system holds the fewest bots is used, so a
+seeding run spreads pilots over the eight starting systems of the four
+empires. Names come from the bot's race, and the first name least used by the
+roster is preferred. A bot sells, buys and builds from its empire's hub: New
+Caldari (Caldari), Amarr (Amarr), Dodixie (Gallente) or Hek (Minmatar). Bots
+created before 0.2.146 keep New Caldari. When a system is over its bot limit,
+a relocating pilot takes the least crowded system within four jumps of the
+nearest free one.
+
+## Market orders from trade pilots
+
+A trade pilot docked outside Jita keeps one standing buy order for each
+mineral at its station, at 90% of the Jita price, paid from its own wallet
+into market escrow (at most 25 million ISK per order and a quarter of its
+funds in escrow). What those orders buy is listed for sale at the Jita price.
+Miners sell into these bids through the normal market. Eight traders are
+handled per add-on cycle. Set `EVEJS_PLAYER_BOTS_MARKET_MAKING=0` and restart
+`server` to stop placing new orders; existing orders stay until they fill or
+expire.
+
+## Combat between bots
+
+Piracy and war patrols may target other playerbots under the same rules as
+human targets: corporation, alliance and fleet mates are never targets, and
+Crimewatch, war status and security space decide legality. A bot attacked by
+another bot defends itself. A bot-run corporation that owns a structure (its
+war headquarters) may declare a normal war on another bot-run corporation
+whose pilots work in the same systems, at most one attempt an hour and two
+such wars at a time; the usual war bill and 24-hour start apply. Set
+`EVEJS_PLAYER_BOTS_BOT_VERSUS_BOT=0` and restart `server` to turn both off.
+
 ## Corporation-wide orders
 
 `/bots corp` (also `/playerbots corp`) gives orders to every playerbot in a

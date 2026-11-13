@@ -498,6 +498,10 @@ function choosePostCapacityAssignment(assignment, systemCount, limit, humanContr
   return destinationStationID ? { kind: "relocate", stationID: destinationStationID } : null;
 }
 
+// How many jumps beyond the nearest free system a relocating pilot may go to
+// reach a less crowded one.
+const RELOCATION_SPREAD_HOPS = 4;
+
 function findRelocationStation(bot, rosterCounts, options = {}) {
   const worldData = require("../../space/worldData");
   const character = readSharedCharacterRecord(bot.characterID) || {};
@@ -540,11 +544,19 @@ function findRelocationStation(bot, rosterCounts, options = {}) {
   }
   const available = candidates.filter((candidate) =>
     (rosterCounts.get(candidate.systemID) || 0) < limit);
-  available.sort((left, right) =>
+  if (!available.length) return 0;
+  // Spread out: among systems a few jumps beyond the nearest one, take the
+  // least crowded. Always filling the nearest system first kept the roster in
+  // one region. Ties are broken per pilot so a wave does not pick one station.
+  const nearestHops = Math.min(...available.map((candidate) => candidate.hops));
+  const reachable = available.filter((candidate) => candidate.hops <= nearestHops + RELOCATION_SPREAD_HOPS);
+  const tieBreak = (candidate) => (Math.imul(Number(bot.characterID) || 0, 2654435761) ^
+    Math.imul(candidate.stationID, 40503)) >>> 0;
+  reachable.sort((left, right) =>
+    (rosterCounts.get(left.systemID) || 0) - (rosterCounts.get(right.systemID) || 0) ||
     left.hops - right.hops ||
-    (rosterCounts.get(right.systemID) || 0) - (rosterCounts.get(left.systemID) || 0) ||
-    right.security - left.security || left.stationID - right.stationID);
-  return available[0]?.stationID || 0;
+    tieBreak(left) - tieBreak(right));
+  return reachable[0].stationID;
 }
 
 function isActivelyProductiveWorkEntry(entry) {
@@ -954,6 +966,12 @@ function hasActiveWork(characterID) {
 
 // The bot hub: where bot output is sold (never Jita).
 const MARKET_STATION_ID = require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID;
+
+// Where a bot sells its output: its own empire hub (never Jita).
+function hubStationFor(bot) {
+  const economy = require("./playerBotEconomyRuntime");
+  return typeof economy.getHubStationIDForBot === "function" ? economy.getHubStationIDForBot(bot) : MARKET_STATION_ID;
+}
 const MINERAL_TYPE_IDS = new Set([34, 35, 36, 37, 38, 39, 40]);
 const ORDER_MAX_RUNS = 10;
 const ORDER_SKIP_MS = 60 * 60 * 1000;
@@ -1153,7 +1171,7 @@ function chooseMiningAssignment(bot, options = {}) {
         role: "mining",
         marketStationID: typeof operations.findUpgradeMarketStation === "function"
           ? operations.findUpgradeMarketStation(bot, upgrade)
-          : require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID,
+          : hubStationFor(bot),
       };
     }
     return null;
@@ -1352,7 +1370,7 @@ function chooseAssignment(bot, options = {}) {
       role,
       marketStationID: typeof operationRuntime.findUpgradeMarketStation === "function"
         ? operationRuntime.findUpgradeMarketStation(bot, upgrade)
-        : require("./playerBotEconomyRuntime").BOT_HUB_STATION_ID,
+        : hubStationFor(bot),
       ...(warShipSupport ? {
         maxSpend: Math.min(balance, Number(warShipSupport.availableBudget) || 0),
         warMobilizationSupportID: warShipSupport.supportID,
@@ -1581,6 +1599,20 @@ async function runDirectorInternal(bots = [], options = {}) {
     } catch (error) {
       require("../../utils/logger").warn(
         `[PlayerBots] Structure-conflict war planning was skipped: ${String(error && error.message || error).slice(0, 180)}.`,
+      );
+    }
+    try {
+      const rivalryWar = await require("./playerBotStructureConflictWarRuntime")
+        .declareRivalryWar(allRosterBots, { humanControlledBotIDs });
+      if (rivalryWar.declared) {
+        summary.rivalryWarsDeclared = 1;
+        require("../../utils/logger").info(
+          `[PlayerBots] Declared corporation war ${rivalryWar.warID} from bot corporation ${rivalryWar.declaringCorporationID} against bot corporation ${rivalryWar.opposingCorporationID}; the normal 24-hour war start timer applies.`,
+        );
+      }
+    } catch (error) {
+      require("../../utils/logger").warn(
+        `[PlayerBots] Bot rivalry war planning was skipped: ${String(error && error.message || error).slice(0, 180)}.`,
       );
     }
   }
@@ -1997,7 +2029,7 @@ async function runDirectorInternal(bots = [], options = {}) {
       : assignment.kind === "sell"
       ? assignment.corporateListing
         ? require("./playerBotIndustryCycleRuntime").startExpiredCorporateResale(bot.characterName)
-        : require("./playerBotOperationRuntime").startSell(bot.characterName, MARKET_STATION_ID, assignment.originStationID, { optimizeMarketDestination: true })
+        : require("./playerBotOperationRuntime").startSell(bot.characterName, hubStationFor(bot), assignment.originStationID, { optimizeMarketDestination: true })
       : assignment.kind === "upgrade"
       ? require("./playerBotOperationRuntime").startShipUpgrade(bot.characterName,
         assignment.role || (["security", "piracy", "sovereignty"].includes(bot.specialty) ? bot.specialty : "mining"),
@@ -2023,7 +2055,7 @@ async function runDirectorInternal(bots = [], options = {}) {
         autonomous: true,
         ...(industryReviewFallback ? { industryReviewFallback: true } : {}),
         stationID: Number(assignment.territorialBase.stationID),
-        marketStationID: MARKET_STATION_ID,
+        marketStationID: hubStationFor(bot),
         optimizeMarketDestination: true,
         territorialOperation: true,
       })
@@ -2053,7 +2085,7 @@ async function runDirectorInternal(bots = [], options = {}) {
           ? operationRuntime.startMining(bot.characterName, MINING_TRIPS_PER_ASSIGNMENT, {
             autonomous: true,
             stationID: Number(fallback.territorialBase.stationID),
-            marketStationID: MARKET_STATION_ID,
+            marketStationID: hubStationFor(bot),
             optimizeMarketDestination: true,
             territorialOperation: true,
           })

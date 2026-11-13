@@ -1328,6 +1328,45 @@ async function listSellOrder(botQuery, itemID, quantity, unitPrice, _durationDay
   }
 }
 
+// A standing buy order at the bot's current station, paid from its wallet
+// into market escrow. Never in Jita. Used by trade pilots to keep visible
+// bids in the regions they work in.
+async function placeBuyOrder(botQuery, typeID, quantity, unitPrice, durationDays = 14) {
+  const context = getDockedTradeContext(botQuery);
+  if (!context.success) return context;
+  if (isJitaTradeContext(context)) return { success: false, message: "Playerbots do not place buy orders in Jita." };
+  const typeCheck = validateTradeType(typeID);
+  if (!typeCheck.success) return typeCheck;
+  const price = normalizeIsk(unitPrice);
+  const units = Math.max(1, Math.trunc(Number(quantity) || 0));
+  if (!price || price > MAX_TRADE_UNIT_PRICE_ISK) return { success: false, message: "Invalid order price." };
+  const botID = Number(context.bot.characterID);
+  if (getCurrentBalance(botID) < price * units) return { success: false, message: "The wallet does not cover the order escrow." };
+  if (activeTradeBots.has(botID)) return { success: false, message: `${context.bot.characterName} already has another market operation in progress.` };
+  const economy = require("./playerBotEconomyRuntime");
+  const before = economy.listOpenBuyOrders(botID, context.stationID, typeCheck.typeID);
+  if (!before.success) return { success: false, message: `Could not read existing orders: ${before.error}.` };
+  const baseline = new Set(before.orders.map((order) => Number(order.order_id)));
+  activeTradeBots.add(botID);
+  try {
+    await getMarketProxy().Handle_PlaceBuyOrder(
+      [context.stationID, typeCheck.typeID, price, units, -1, 1, Math.max(1, Math.min(90, Math.trunc(durationDays))), false],
+      context.session,
+    );
+    const after = economy.listOpenBuyOrders(botID, context.stationID, typeCheck.typeID);
+    const created = (after.orders || []).filter((order) => !baseline.has(Number(order.order_id)));
+    return created.length
+      ? { success: true, orderID: Number(created[0].order_id), units: Number(created[0].vol_remaining), price,
+        message: `${context.bot.characterName} placed a buy order for ${units} of ${typeCheck.typeID} at ${price.toFixed(2)} ISK.` }
+      : { success: true, orderID: null, units: 0, price, filledImmediately: true,
+        message: `${context.bot.characterName}'s buy order for ${typeCheck.typeID} filled immediately.` };
+  } catch (error) {
+    return { success: false, message: `The market rejected ${context.bot.characterName}'s buy order: ${getMarketAuthorityErrorMessage(error).slice(0, 200)}.` };
+  } finally {
+    activeTradeBots.delete(botID);
+  }
+}
+
 async function cancelOrder(botQuery, orderID) {
   const bot = playerBots.resolveBot(botQuery);
   if (!bot) return { success: false, message: `No unique playerbot found with that name: ${botQuery}.` };
@@ -1340,6 +1379,7 @@ async function cancelOrder(botQuery, orderID) {
 }
 
 module.exports = {
+  placeBuyOrder,
   MAX_TRADE_BUDGET_ISK,
   MAX_PLAYERBOT_SELL_ORDER_DAYS,
   cancelOrder,
