@@ -124,6 +124,9 @@ td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, mon
 .settings-actions { align-items: center; color: var(--muted); display: flex; justify-content: space-between; margin: 5px 0 20px; }
 .settings-actions button { background: linear-gradient(135deg, #218ba2, #2367a0); border: 1px solid rgba(94, 222, 231, .3); border-radius: 7px; color: white; cursor: pointer; font-weight: 650; padding: 10px 16px; }
 .settings-actions button:disabled { cursor: wait; opacity: .55; }
+.settings-buttons { display: flex; gap: 8px; }
+.settings-actions button.secondary { background: transparent; border-color: rgba(130, 145, 162, .45); color: var(--muted); }
+.settings-grid .default-hint { color: #5f9fb0; }
 .seed-monitor { background: #0c141d; border: 1px solid #293746; border-radius: 7px; display: grid; gap: 5px; margin: 18px 20px 0; padding: 13px 15px; }
 .seed-monitor strong { color: var(--text); font-size: 12px; }
 .seed-monitor span { color: var(--cyan); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }

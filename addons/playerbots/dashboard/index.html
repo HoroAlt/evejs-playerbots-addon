@@ -140,7 +140,7 @@
             <label>Maximum EveJS process CPU (%)<input name="rosterSeedMaxProcessCpuPercent" type="number" min="25" max="95" required><small>Hard cap: 95%. Seeding pauses above the lower of this value and the cap.</small></label>
             <label>Maximum single bot creation time (ms)<input name="rosterSeedMaximumSingleBotMs" type="number" min="25" max="1000" required><small>Hard cap: 1,000 ms. A slow character creation stops the current batch.</small></label>
           </div><div class="seed-monitor" aria-live="polite"><strong id="seed-state">Loading seeding status</strong><span id="seed-progress">—</span><small id="seed-last-batch">The seeder waits for two server-load samples before creating pilots.</small></div></article>
-          <div class="settings-actions"><span id="settings-updated">Loading saved settings</span><button type="submit" id="save-settings">Save settings</button></div>
+          <div class="settings-actions"><span id="settings-updated">Loading saved settings</span><span class="settings-buttons"><button type="button" id="reset-settings" class="secondary">Reset to defaults</button><button type="submit" id="save-settings">Save settings</button></span></div>
         </form>
       </section>
 

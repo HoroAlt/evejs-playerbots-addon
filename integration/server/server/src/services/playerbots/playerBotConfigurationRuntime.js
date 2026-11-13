@@ -112,6 +112,12 @@ function getSettings() {
     rosterSeedMaximumSingleBotMs: ROSTER_SEED_SAFETY_LIMITS.maximumSingleBotMs,
   };
   settings.updatedAt = String(stored.updatedAt || "");
+  // What each setting returns to with "Reset to defaults": the code default,
+  // or the installation's value in the add-on environment file.
+  const reference = { ...baseline };
+  reference.rosterTarget = Math.min(reference.rosterTarget, reference.rosterCeiling);
+  reference.directorThinkMaxMs = Math.max(reference.directorThinkMinMs, reference.directorThinkMaxMs);
+  settings.defaults = reference;
   return settings;
 }
 
@@ -125,6 +131,7 @@ function updateSettings(patch = {}) {
   const next = { ...getSettings() };
   delete next.maximums;
   delete next.updatedAt;
+  delete next.defaults;
   for (const [key, value] of Object.entries(patch)) {
     if (booleanSettings.has(key)) {
       if (typeof value !== "boolean") return { success: false, message: `${key} must be true or false.` };

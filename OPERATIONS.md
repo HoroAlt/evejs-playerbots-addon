@@ -782,6 +782,14 @@ For a manual rollback, restore the files listed in the install's
 run, remove only the `EVEJS_PLAYER_BOTS_ADDON_TOKEN` line from `.env`. Keep the
 backup directory until the rollback is confirmed.
 
+## Settings page defaults
+
+Every field on the dashboard's Settings page shows its default underneath.
+The default is the add-on's built-in value, or the installation's value when
+it is set in the add-on environment file (`.env`). **Reset to defaults** puts
+every field back to its default and saves, after a confirmation; the page
+then reads the settings back and reports anything that was not applied.
+
 ## Where bots live
 
 Each new bot gets a race, a bloodline of that race and one of the race's

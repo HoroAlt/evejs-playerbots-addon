@@ -313,15 +313,10 @@ async function showOperationDetails(operationID) {
 function millisecondsFieldToSeconds(settings, key) { return Math.round(Number(settings[key]) / 1000); }
 function millisecondsFieldToHours(settings, key) { return Number((Number(settings[key]) / 3_600_000).toPrecision(8)); }
 
-async function loadSettings() {
-  try {
-    const [data, seedStatus] = await Promise.all([
-      getJSON("/api/settings"),
-      getJSON("/api/seed-status"),
-    ]);
-    const settings = data.settings || {};
-    const form = $("settings-form");
-    const values = {
+// Form field values for a settings object (durations shown in the units the
+// form uses).
+function settingsFormValues(settings) {
+  return {
       rosterTarget: settings.rosterTarget,
       rosterCeiling: settings.rosterCeiling,
       maxOnline: settings.maxOnline,
@@ -343,10 +338,49 @@ async function loadSettings() {
       rosterSeedMaxEventLoopP95Ms: settings.rosterSeedMaxEventLoopP95Ms,
       rosterSeedMaxProcessCpuPercent: settings.rosterSeedMaxProcessCpuPercent,
       rosterSeedMaximumSingleBotMs: settings.rosterSeedMaximumSingleBotMs,
-    };
-    for (const [key, value] of Object.entries(values)) form.elements.namedItem(key).value = String(value ?? "");
-    form.elements.namedItem("autoworkEnabled").checked = settings.autoworkEnabled === true;
-    form.elements.namedItem("rosterSeedEnabled").checked = settings.rosterSeedEnabled === true;
+  };
+}
+
+function fillSettingsForm(settings) {
+  const form = $("settings-form");
+  for (const [key, value] of Object.entries(settingsFormValues(settings))) form.elements.namedItem(key).value = String(value ?? "");
+  form.elements.namedItem("autoworkEnabled").checked = settings.autoworkEnabled === true;
+  form.elements.namedItem("rosterSeedEnabled").checked = settings.rosterSeedEnabled === true;
+}
+
+// Writes "Default: …" under every field, from the server's defaults.
+function showSettingDefaults(defaults) {
+  if (!defaults) return;
+  const form = $("settings-form");
+  const values = settingsFormValues(defaults);
+  values.autoworkEnabled = defaults.autoworkEnabled ? "on" : "off";
+  values.rosterSeedEnabled = defaults.rosterSeedEnabled ? "on" : "off";
+  for (const [key, value] of Object.entries(values)) {
+    const field = form.elements.namedItem(key);
+    const label = field && field.closest("label");
+    if (!label) continue;
+    let hint = label.querySelector(".default-hint");
+    if (!hint) {
+      hint = document.createElement("small");
+      hint.className = "default-hint";
+      label.appendChild(hint);
+    }
+    hint.textContent = `Default: ${value}`;
+  }
+}
+
+let settingDefaults = null;
+
+async function loadSettings() {
+  try {
+    const [data, seedStatus] = await Promise.all([
+      getJSON("/api/settings"),
+      getJSON("/api/seed-status"),
+    ]);
+    const settings = data.settings || {};
+    settingDefaults = settings.defaults || null;
+    fillSettingsForm(settings);
+    showSettingDefaults(settingDefaults);
     const roster = state.snapshot?.roster || {};
     $("settings-metrics").innerHTML = [
       ["BOT ROSTER", `${number(roster.total)} / ${number(settings.rosterTarget)}`, "created / configured target", "cyan"],
@@ -644,6 +678,12 @@ $("operation-rows").addEventListener("click", (event) => {
 });
 $("operation-dialog-close").addEventListener("click", () => $("operation-dialog").close());
 $("settings-form").addEventListener("submit", (event) => void saveSettings(event));
+$("reset-settings").addEventListener("click", () => {
+  if (!settingDefaults) return;
+  if (!window.confirm("Reset every setting on this page to its default and save?")) return;
+  fillSettingsForm(settingDefaults);
+  $("settings-form").requestSubmit();
+});
 window.addEventListener("hashchange", () => setView(location.hash.slice(1) || "overview"));
 
 setView(location.hash.slice(1) || "overview");
