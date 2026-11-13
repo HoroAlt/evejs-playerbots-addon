@@ -50,11 +50,20 @@ def write_version(path: Path, version: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default=(ROOT / "packaging" / "VERSION").read_text().strip(),
+    version = (ROOT / "packaging" / "VERSION").read_text().strip()
+    parser.add_argument("--version", default=version,
                         help="release version, e.g. 0.2.145-local.1")
-    parser.add_argument("--base-version", default="0.2.142", help="upstream release version to overlay")
+    parser.add_argument("--base-version", default=version.split("-")[0],
+                        help="upstream release version to overlay (defaults to the VERSION prefix)")
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
+
+    expected_base = version.split("-")[0]
+    if args.base_version != expected_base:
+        raise SystemExit(
+            f"base version {args.base_version} does not match packaging/VERSION ({version}); "
+            f"rebuild the integration tree on {expected_base} first"
+        )
 
     base_zip = ROOT / "dist" / f"evejs-playerbots-addon-v{args.base_version}.zip"
     if not base_zip.is_file():
@@ -74,6 +83,11 @@ def main() -> int:
 
         manifest_path = stage / "integration" / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("schemaVersion") != 3:
+            raise SystemExit(
+                f"unexpected manifest schema {manifest.get('schemaVersion')}; "
+                "this builder only understands schema 3"
+            )
         changed = []
         for source in sorted(INTEGRATION.rglob("*")):
             if not source.is_file():

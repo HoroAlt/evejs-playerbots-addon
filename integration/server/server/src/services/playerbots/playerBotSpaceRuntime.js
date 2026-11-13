@@ -1,6 +1,11 @@
 "use strict";
 
 const { getCharacterRecord, readSharedCharacterRecord, getActiveShipRecord } = require("../character/characterState");
+// Actor sessions only need a read-only view; older EveJS builds do not export
+// the shared record reader, so fall back to the cloning accessor.
+const readCharacterRecord = typeof readSharedCharacterRecord === "function"
+  ? readSharedCharacterRecord
+  : getCharacterRecord;
 const playerBots = require("./playerBotRuntime");
 const spaceRuntime = require("../../space/runtime");
 const worldData = require("../../space/worldData");
@@ -357,7 +362,7 @@ function getActorSession(bot) {
     session = createActorSession(bot);
     actorSessions.set(characterID, session);
   }
-  const character = readSharedCharacterRecord(characterID);
+  const character = readCharacterRecord(characterID);
   if (!character) throw new Error(`PLAYERBOT_CHARACTER_NOT_FOUND:${characterID}`);
   syncActorSession(session, character, characterID);
   if (started && desiredConnectedCharacterIDs.has(characterID)) registerPresence(session, characterID);

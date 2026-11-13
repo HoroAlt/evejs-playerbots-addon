@@ -10,6 +10,7 @@ DIR=$(cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$DIR"
 
 git fetch origin
+git switch dev
 git rebase origin/main
 git push --force-with-lease fork dev
 git push fork origin/main:main
