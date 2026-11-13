@@ -1590,7 +1590,7 @@ const SHIP_LADDER = Object.freeze({
     // Only pilots trained in Mining Barge climb to the Procurer.
     // catalogFit: the modules come from the killmail catalog (two strip miners
     // instead of the single hard-coded one), see applyCatalogFit.
-    { name: "Procurer", hullTypeID: 17480, catalogFit: true, moduleTypeIDs: [17482], minBalance: 60_000_000, requiredSkills: [[17940, 1]] },
+    { name: "Mining barge", hullTypeID: 17480, hullChoices: [17478, 17476, 17480], catalogFit: true, moduleTypeIDs: [17482], minBalance: 60_000_000, requiredSkills: [[17940, 1]] },
     // Tech II barge: Exhumers 1 implies Mining Barge 5 through its prerequisites.
     { name: "Mackinaw", hullTypeID: 22548, catalogFit: true, moduleTypeIDs: [], minBalance: 250_000_000, requiredSkills: [[22551, 1]] },
   ],
@@ -1673,6 +1673,9 @@ function resolveLadderTypeID(value) {
 function resolveShipLadderRung(rung) {
   if (!rung) return null;
   const hullTypeID = resolveLadderTypeID(rung.hullTypeID);
+  const hullChoices = [...new Set(
+    [hullTypeID, ...(rung.hullChoices || []).map(resolveLadderTypeID)].filter((id) => id > 0),
+  )];
   const moduleTypeIDs = (rung.moduleTypeIDs || []).map(resolveLadderTypeID);
   const droneTypeIDs = (rung.droneTypeIDs || []).map(resolveLadderTypeID);
   const cargoTypeIDs = (rung.cargoTypeIDs || []).map(resolveLadderTypeID);
@@ -1682,7 +1685,24 @@ function resolveShipLadderRung(rung) {
     const typeID = resolveLadderTypeID(name);
     if (typeID) droneDamageTypeByID[typeID] = damageType;
   }
-  return { ...rung, hullTypeID, moduleTypeIDs, droneTypeIDs, cargoTypeIDs, droneDamageTypeByID };
+  return { ...rung, hullTypeID, hullChoices, moduleTypeIDs, droneTypeIDs, cargoTypeIDs, droneDamageTypeByID };
+}
+
+// A rung can name several hulls of the same tier. Matching by hullTypeID alone
+// would treat a Retriever pilot as off-ladder and send it back to a Venture.
+function rungIndexOfHull(ladder, hullTypeID) {
+  const hull = Number(hullTypeID) || 0;
+  if (!hull) return -1;
+  return ladder.findIndex((rung) =>
+    Number(rung.hullTypeID) === hull || (rung.hullChoices || []).includes(hull));
+}
+
+// Deterministic per pilot, so training, purchasing and refitting agree.
+function rungHullForPilot(bot, rung) {
+  const choices = (rung && rung.hullChoices || []).filter((id) => Number(id) > 0);
+  if (choices.length <= 1) return Number(rung && rung.hullTypeID) || 0;
+  const seed = Math.abs(Math.trunc(Number(bot && bot.characterID) || 0));
+  return choices[seed % choices.length];
 }
 
 // The skills the static data requires to fly a hull or fit a module.
@@ -1705,7 +1725,7 @@ function nextShipUpgradeSkillGap(bot, role) {
   const character = getCharacterRecord(bot && bot.characterID) || {};
   const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
   const currentHull = Number(character.shipTypeID) || 0;
-  const currentIndex = ladder.findIndex((rung) => rung.hullTypeID === currentHull);
+  const currentIndex = rungIndexOfHull(ladder, currentHull);
   const next = ladder[currentIndex + 1] || null;
   if (!next) return null;
   if (canUseRung(bot, next) && hasSkills(bot, next.requiredSkills)) return null;
@@ -1725,9 +1745,9 @@ function getCombatShipSkillRequirements(role) {
 }
 
 function getShipRungSkillRequirements(role, hullTypeID) {
-  const hullID = Number(hullTypeID) || 0;
-  const rung = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean)
-    .find((entry) => Number(entry.hullTypeID) === hullID);
+  const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
+  const index = rungIndexOfHull(ladder, hullTypeID);
+  const rung = index >= 0 ? ladder[index] : null;
   if (!rung) return [];
   const requirements = new Map();
   for (const typeID of [rung.hullTypeID, ...(rung.moduleTypeIDs || []),
@@ -1777,10 +1797,19 @@ function selectBootstrapRung(role, currentIndex, balance, ladder = SHIP_LADDER[r
 // so the replenish check and the upgrade decision always agree.
 function applyCatalogFit(bot, rung) {
   if (!rung || rung.catalogFit !== true) return rung;
-  const fit = require("./playerBotFitPlanner").oreFitForPilot(rung.hullTypeID, bot && bot.characterID);
-  if (!fit || !fit.plan) return rung;
+  // A rung may offer several hulls of the same tier. A pilot already flying
+  // one of them keeps it; otherwise the pilot picks one deterministically and
+  // the fit is planned for that hull.
+  const currentHull = Number((getCharacterRecord(bot && bot.characterID) || {}).shipTypeID) || 0;
+  const hullTypeID = (rung.hullChoices || []).includes(currentHull)
+    ? currentHull
+    : (rungHullForPilot(bot, rung) || rung.hullTypeID);
+  const fit = require("./playerBotFitPlanner").oreFitForPilot(
+    hullTypeID, bot && bot.characterID, { maxISK: Number(rung.minBalance) || 0 });
+  if (!fit || !fit.plan) return { ...rung, hullTypeID };
   return {
     ...rung,
+    hullTypeID,
     name: `${rung.name} (${fit.name})`,
     moduleTypeIDs: [...(fit.plan.moduleTypeIDs || [])],
     droneTypeIDs: [...(fit.plan.droneTypeIDs || [])],
@@ -1796,7 +1825,7 @@ function nextShipRungForTraining(bot, role) {
   const character = getCharacterRecord(bot && bot.characterID) || {};
   const currentHull = Number(character.shipTypeID) || 0;
   const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
-  const currentIndex = ladder.findIndex((rung) => rung.hullTypeID === currentHull);
+  const currentIndex = rungIndexOfHull(ladder, currentHull);
   return ladder[currentIndex + 1] || null;
 }
 
@@ -1804,7 +1833,7 @@ function nextShipUpgrade(bot, role = "mining", options = {}) {
   const character = getCharacterRecord(bot.characterID) || {};
   const currentHull = Number(character.shipTypeID) || 0;
   const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
-  const currentIndex = ladder.findIndex((rung) => rung.hullTypeID === currentHull);
+  const currentIndex = rungIndexOfHull(ladder, currentHull);
   const currentRung = currentIndex >= 0 ? applyCatalogFit(bot, ladder[currentIndex]) : null;
   if (currentRung && ((currentRung.moduleTypeIDs || []).length || (currentRung.droneTypeIDs || []).length || (currentRung.cargoTypeIDs || []).length)) {
     const itemStore = require("../inventory/itemStore");
@@ -2040,7 +2069,8 @@ function queueUpgradeForMarketCapacity(characterID, reason, retryAfterAtMs = Dat
 function hasRoleShipFit(bot, role, options = {}) {
   const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
   const character = getCharacterRecord(bot && bot.characterID) || {};
-  const rung = ladder.find((entry) => Number(entry.hullTypeID) === Number(character.shipTypeID));
+  const index = rungIndexOfHull(ladder, character.shipTypeID);
+  const rung = index >= 0 ? ladder[index] : null;
   if (!rung || !canUseRung(bot, rung)) return false;
   const itemStore = require("../inventory/itemStore");
   const fitting = require("../fitting/liveFittingState");

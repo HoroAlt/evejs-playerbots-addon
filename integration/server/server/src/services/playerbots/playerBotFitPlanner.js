@@ -241,6 +241,46 @@ function planMiningYield(plan) {
   return total;
 }
 
+// A fit the hull cannot power would leave its miners offline, which is what
+// "no mining modules" looks like to the director. Zero output means the static
+// data has no attribute for that hull, so the check is skipped rather than
+// dropping every catalog fit.
+const FIT_RESOURCE_TOLERANCE = 1.05;
+
+function planResourceLoad(plan) {
+  const fitting = require("../fitting/liveFittingState");
+  const cpuOutput = Number(fitting.getTypeAttributeValue(plan.shipTypeID, "cpuOutput")) || 0;
+  const powerOutput = Number(fitting.getTypeAttributeValue(plan.shipTypeID, "powerOutput")) || 0;
+  let cpu = 0;
+  let power = 0;
+  for (const typeID of plan.moduleTypeIDs || []) {
+    cpu += Number(fitting.getTypeAttributeValue(typeID, "cpu")) || 0;
+    power += Number(fitting.getTypeAttributeValue(typeID, "power")) || 0;
+  }
+  const known = cpuOutput > 0 && powerOutput > 0;
+  return {
+    cpu,
+    power,
+    cpuOutput,
+    powerOutput,
+    feasible: !known ||
+      (cpu <= cpuOutput * FIT_RESOURCE_TOLERANCE && power <= powerOutput * FIT_RESOURCE_TOLERANCE),
+  };
+}
+
+function planPriceEstimate(plan) {
+  const registry = require("../inventory/itemTypeRegistry");
+  let total = 0;
+  let unknown = 0;
+  for (const typeID of [plan.shipTypeID, ...(plan.moduleTypeIDs || [])]) {
+    const type = registry.resolveItemByTypeID(typeID) || {};
+    const price = Number(type.basePrice) || 0;
+    if (price > 0) total += price;
+    else unknown += 1;
+  }
+  return { total, unknown };
+}
+
 function isOreMiningFit(plan) {
   const registry = require("../inventory/itemTypeRegistry");
   let hasOre = false;
@@ -259,8 +299,16 @@ function oreFitsForHull(hullTypeID) {
   if (oreFitsByHull.has(hull)) return oreFitsByHull.get(hull);
   const fits = catalogFitsForHull(hull)
     .filter((fit) => isOreMiningFit(fit.plan))
-    .map((fit) => ({ ...fit, miningYield: planMiningYield(fit.plan) }))
-    .filter((fit) => fit.miningYield > 0);
+    .map((fit) => ({
+      ...fit,
+      miningYield: planMiningYield(fit.plan),
+      ...planResourceLoad(fit.plan),
+      price: planPriceEstimate(fit.plan),
+    }))
+    .filter((fit) => fit.miningYield > 0)
+    // A fit the hull cannot power would leave its miners offline, which is what
+    // "no mining modules" looks like to the director.
+    .filter((fit) => fit.feasible);
   oreFitsByHull.set(hull, fits);
   return fits;
 }
@@ -268,12 +316,22 @@ function oreFitsForHull(hullTypeID) {
 // Best ore yield for this hull, tie-broken per pilot so the fleet is not all
 // on one fit. The same pilot always gets the same fit, so training and
 // purchasing agree.
-function oreFitForPilot(hullTypeID, characterID) {
-  const fits = oreFitsForHull(hullTypeID);
+function oreFitForPilot(hullTypeID, characterID, options = {}) {
+  const maxISK = Math.max(0, Number(options.maxISK) || 0);
+  const fits = oreFitsForHull(hullTypeID).filter((fit) => {
+    // Prices are incomplete for many modules in this static data, so only a
+    // fully priced fit can be rejected on cost.
+    if (!maxISK || !fit.price || fit.price.unknown > 0) return true;
+    return fit.price.total <= maxISK;
+  });
   if (!fits.length) return null;
-  const bestYield = Math.max(...fits.map((fit) => fit.miningYield));
-  const top = fits.filter((fit) => fit.miningYield === bestYield);
-  return top[pilotHash(characterID) % top.length];
+  const ranked = fits.slice().sort((left, right) =>
+    right.miningYield - left.miningYield ||
+    left.cpu - right.cpu ||
+    left.catalogIndex - right.catalogIndex);
+  const best = ranked[0];
+  const tied = ranked.filter((fit) => fit.miningYield === best.miningYield && fit.cpu === best.cpu);
+  return tied[pilotHash(characterID) % tied.length];
 }
 
 module.exports = {
@@ -283,5 +341,8 @@ module.exports = {
   catalogSkillRequirements,
   oreFitsForHull,
   oreFitForPilot,
-  _testing: { MAX_FIT_ROWS, MAX_FIT_CARGO_UNITS, MAX_FIT_BAY_UNITS },
+  _testing: {
+    MAX_FIT_ROWS, MAX_FIT_CARGO_UNITS, MAX_FIT_BAY_UNITS, FIT_RESOURCE_TOLERANCE,
+    isOreMiningFit, planResourceLoad, planPriceEstimate, pilotHash,
+  },
 };
