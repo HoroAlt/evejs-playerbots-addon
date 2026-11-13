@@ -245,7 +245,7 @@ function planMiningYield(plan) {
 // "no mining modules" looks like to the director. Zero output means the static
 // data has no attribute for that hull, so the check is skipped rather than
 // dropping every catalog fit.
-const FIT_RESOURCE_TOLERANCE = 1.05;
+const FIT_RESOURCE_TOLERANCE = 1;
 
 function planResourceLoad(plan) {
   const fitting = require("../fitting/liveFittingState");
@@ -266,19 +266,6 @@ function planResourceLoad(plan) {
     feasible: !known ||
       (cpu <= cpuOutput * FIT_RESOURCE_TOLERANCE && power <= powerOutput * FIT_RESOURCE_TOLERANCE),
   };
-}
-
-function planPriceEstimate(plan) {
-  const registry = require("../inventory/itemTypeRegistry");
-  let total = 0;
-  let unknown = 0;
-  for (const typeID of [plan.shipTypeID, ...(plan.moduleTypeIDs || [])]) {
-    const type = registry.resolveItemByTypeID(typeID) || {};
-    const price = Number(type.basePrice) || 0;
-    if (price > 0) total += price;
-    else unknown += 1;
-  }
-  return { total, unknown };
 }
 
 function isOreMiningFit(plan) {
@@ -303,11 +290,8 @@ function oreFitsForHull(hullTypeID) {
       ...fit,
       miningYield: planMiningYield(fit.plan),
       ...planResourceLoad(fit.plan),
-      price: planPriceEstimate(fit.plan),
     }))
     .filter((fit) => fit.miningYield > 0)
-    // A fit the hull cannot power would leave its miners offline, which is what
-    // "no mining modules" looks like to the director.
     .filter((fit) => fit.feasible);
   oreFitsByHull.set(hull, fits);
   return fits;
@@ -315,23 +299,14 @@ function oreFitsForHull(hullTypeID) {
 
 // Best ore yield for this hull, tie-broken per pilot so the fleet is not all
 // on one fit. The same pilot always gets the same fit, so training and
-// purchasing agree.
-function oreFitForPilot(hullTypeID, characterID, options = {}) {
-  const maxISK = Math.max(0, Number(options.maxISK) || 0);
-  const fits = oreFitsForHull(hullTypeID).filter((fit) => {
-    // Prices are incomplete for many modules in this static data, so only a
-    // fully priced fit can be rejected on cost.
-    if (!maxISK || !fit.price || fit.price.unknown > 0) return true;
-    return fit.price.total <= maxISK;
-  });
+// purchasing agree. Cost is not part of the choice: the purchase path enforces
+// the wallet and the rung's spend cap.
+function oreFitForPilot(hullTypeID, characterID) {
+  const fits = oreFitsForHull(hullTypeID);
   if (!fits.length) return null;
-  const ranked = fits.slice().sort((left, right) =>
-    right.miningYield - left.miningYield ||
-    left.cpu - right.cpu ||
-    left.catalogIndex - right.catalogIndex);
-  const best = ranked[0];
-  const tied = ranked.filter((fit) => fit.miningYield === best.miningYield && fit.cpu === best.cpu);
-  return tied[pilotHash(characterID) % tied.length];
+  const bestYield = Math.max(...fits.map((fit) => fit.miningYield));
+  const top = fits.filter((fit) => fit.miningYield === bestYield);
+  return top[pilotHash(characterID) % top.length];
 }
 
 module.exports = {
@@ -343,6 +318,6 @@ module.exports = {
   oreFitForPilot,
   _testing: {
     MAX_FIT_ROWS, MAX_FIT_CARGO_UNITS, MAX_FIT_BAY_UNITS, FIT_RESOURCE_TOLERANCE,
-    isOreMiningFit, planResourceLoad, planPriceEstimate, pilotHash,
+    isOreMiningFit, planResourceLoad, pilotHash,
   },
 };
