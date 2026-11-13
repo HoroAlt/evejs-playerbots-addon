@@ -606,6 +606,16 @@ function canReserveSystemArrival(residentCount, incomingCount, limit, humanContr
   return humanControlled === true || Number(residentCount || 0) + Number(incomingCount || 0) < Number(limit || 0);
 }
 
+// Jita holds the only seeded market, so every new pilot shops there for its
+// first ship. A shopping trip is short; holding those trips to the ordinary
+// per-system limit left most of a fresh roster queued with nothing to do.
+const JITA_SHOPPING_ARRIVAL_LIMIT = 150;
+
+function marketArrivalLimit(destinationSystemID, limit) {
+  const jitaSystemID = Number(require("./playerBotEconomyRuntime").JITA_SYSTEM_ID) || 0;
+  return Number(destinationSystemID) === jitaSystemID ? Math.max(limit, JITA_SHOPPING_ARRIVAL_LIMIT) : limit;
+}
+
 function shouldQueueUpgradeForMarketCapacity(operation, residentCount, incomingCount, limit) {
   // Capsule recovery is a finite trip to replace a lost ship. Let it reach its
   // chosen market even when the system is full; after the fit completes,
@@ -692,10 +702,11 @@ function enforceUpgradeMarketArrivalLimit(options = {}) {
     if (!destinationSystemID || currentSystemID === destinationSystemID || humanControlledBotIDs.has(characterID)) continue;
     const arrivals = Number(incoming.get(destinationSystemID)) || 0;
     const residents = Number(residentCounts.get(destinationSystemID)) || 0;
-    if (shouldQueueUpgradeForMarketCapacity(operation, residents, arrivals, limit)) {
+    const systemLimit = marketArrivalLimit(destinationSystemID, limit);
+    if (shouldQueueUpgradeForMarketCapacity(operation, residents, arrivals, systemLimit)) {
       const result = operationRuntime.queueUpgradeForMarketCapacity(
         characterID,
-        `Queued because system ${destinationSystemID} already has ${residents + arrivals}/${limit} autonomous pilots or upgrade arrivals.`,
+        `Queued because system ${destinationSystemID} already has ${residents + arrivals}/${systemLimit} autonomous pilots or upgrade arrivals.`,
         now + UPGRADE_MARKET_QUEUE_RETRY_MS,
       );
       if (result.success) {
@@ -1907,11 +1918,11 @@ async function runDirectorInternal(bots = [], options = {}) {
       const colonyArrivals = Number(colonyIncomingBySystem.get(jitaSystemID)) || 0;
       const miningArrivals = Number(miningIncomingBySystem.get(jitaSystemID)) || 0;
       const arrivals = upgradeArrivals + colonyArrivals + miningArrivals;
-      if (!canReserveSystemArrival(residents, arrivals, autonomousSystemLimit)) {
+      if (!canReserveSystemArrival(residents, arrivals, marketArrivalLimit(jitaSystemID, autonomousSystemLimit))) {
         colonyMarketCapacityBlocked = { systemID: jitaSystemID, residents, arrivals };
         queueColonySetupAssignment(
           bot,
-          `Waiting for Jita system ${jitaSystemID} to free a slot (${residents} residents, ${arrivals} inbound; limit ${autonomousSystemLimit}).`,
+          `Waiting for Jita system ${jitaSystemID} to free a slot (${residents} residents, ${arrivals} inbound; limit ${marketArrivalLimit(jitaSystemID, autonomousSystemLimit)}).`,
           "jita-market-capacity",
           now,
         );
@@ -1930,7 +1941,7 @@ async function runDirectorInternal(bots = [], options = {}) {
       if (destinationSystemID && destinationSystemID !== systemID) {
         const residents = Number(rosterSystemCounts.get(destinationSystemID)) || 0;
         const arrivals = Number(upgradeIncomingBySystem.get(destinationSystemID)) || 0;
-        if (!canReserveSystemArrival(residents, arrivals, autonomousSystemLimit)) {
+        if (!canReserveSystemArrival(residents, arrivals, marketArrivalLimit(destinationSystemID, autonomousSystemLimit))) {
           upgradeMarketCapacityBlocked = { systemID: destinationSystemID, residents, arrivals };
           assignment = chooseAssignment(bot, {
             prioritizeProductiveWork: needsMinimumProductiveWork,
@@ -2345,6 +2356,7 @@ module.exports = {
     countActiveCapacityRelocations, canAssignAtCapacity, shouldDeferHumanCorporationBot,
     canResumeColonySetup, shouldResumeQueuedColonySetup,
     canReserveSystemArrival, shouldQueueUpgradeForMarketCapacity, shouldRetargetUpgradeMarket,
+    marketArrivalLimit, JITA_SHOPPING_ARRIVAL_LIMIT,
     countUpgradeMarketArrivals,
     enforceUpgradeMarketArrivalLimit,
     countMiningArrivals, countColonyMarketArrivals, needsColonySetup, queueColonySetupAssignment,
