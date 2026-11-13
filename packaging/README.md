@@ -1,15 +1,15 @@
 # Homelab branch
 
 Fork of [`kroryan/evejs-playerbots-addon`](https://github.com/kroryan/evejs-playerbots-addon),
-tracking upstream releases plus the changes this homelab runs on its
+tracking upstream releases plus the changes this server runs on its
 `evejs-stand` (LXC 222, EveJS 261108.1).
 
-`homelab` is rebased onto each upstream release; `main` is kept as a plain
+`dev` is rebased onto each upstream release; `main` is kept as a plain
 mirror of upstream so merges stay clean:
 
 ```sh
 git fetch upstream
-git checkout homelab
+git checkout dev
 git merge upstream/main
 ```
 
@@ -25,26 +25,26 @@ git merge upstream/main
 | Base tree | `.dockerignore` | Keeps `addons/` in the image build context, otherwise the server starts with `MODULE_NOT_FOUND` |
 
 Base-tree changes are *not* part of the add-on package; they live as patches in
-`homelab/base/` and are applied after the add-on install.
+`packaging/base/` and are applied after the add-on install.
 
 ## Build a release
 
 ```sh
-python3 homelab/build-package.py          # -> dist/evejs-playerbots-addon-v<homelab/VERSION>.zip
+python3 packaging/build-package.py          # -> dist/evejs-playerbots-addon-v<packaging/VERSION>.zip
 ```
 
 It takes the stock release ZIP in `dist/`, overlays every file under
 `integration/server/`, recomputes the manifest hashes and stamps the version
-(`0.2.142-hl.1`). Upstream's own `tools/playerbots/build-addon-package.py`
+(`0.2.145-local.1`). Upstream's own `tools/playerbots/build-addon-package.py`
 expects a full EveJS working tree at the repository root and cannot run here.
 
 ## Deploy to the stand
 
 ```sh
 TREE=/srv/stand/EveJS-261108.1
-unzip -o dist/evejs-playerbots-addon-v0.2.142-hl.1.zip -d /srv/stand
-python3 /srv/stand/EveJS-Playerbots-Addon-v0.2.142-hl.1/install.py "$TREE" --replace-conflicts
-homelab/apply-base.sh "$TREE"
+unzip -o dist/evejs-playerbots-addon-v0.2.145-local.1.zip -d /srv/stand
+python3 /srv/stand/EveJS-Playerbots-Addon-v0.2.145-local.1/install.py "$TREE" --replace-conflicts
+packaging/apply-base.sh "$TREE"
 cd "$TREE" && docker compose build && docker compose up -d
 ```
 
@@ -59,6 +59,6 @@ to it.
 
 ## Versioning
 
-`homelab/VERSION` is the release name; `--base-version` selects the upstream
+`packaging/VERSION` is the release name; `--base-version` selects the upstream
 release ZIP to overlay (default `0.2.142`). Bump the suffix (`-hl.2`, …) for
 every build so the running server can be told apart from upstream.

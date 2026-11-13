@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Apply the homelab patches to the base EveJS tree (files the add-on does not own).
-# Usage: homelab/apply-base.sh /path/to/EveJS-261108.1
+# Apply the local patches to the base EveJS tree (files the add-on does not own).
+# Usage: packaging/apply-base.sh /path/to/EveJS-261108.1
 set -euo pipefail
 TREE=${1:?usage: apply-base.sh /path/to/EveJS-tree}
 DIR=$(cd -- "$(dirname -- "$0")" && pwd)

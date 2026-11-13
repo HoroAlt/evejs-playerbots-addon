@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a homelab release ZIP from the upstream release plus our integration files.
+"""Build a local release ZIP from the upstream release plus our integration files.
 
 The upstream build tool expects a full EveJS working tree at the repository
 root; this repo only carries the published ``integration/`` layout. So the
@@ -37,8 +37,8 @@ def write_version(path: Path, version: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", default=(ROOT / "homelab" / "VERSION").read_text().strip(),
-                        help="release version, e.g. 0.2.142-hl.1")
+    parser.add_argument("--version", default=(ROOT / "packaging" / "VERSION").read_text().strip(),
+                        help="release version, e.g. 0.2.145-local.1")
     parser.add_argument("--base-version", default="0.2.142", help="upstream release version to overlay")
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
@@ -49,7 +49,7 @@ def main() -> int:
     output = Path(args.output or ROOT / "dist" / f"evejs-playerbots-addon-v{args.version}.zip").resolve()
     stage_name = f"EveJS-Playerbots-Addon-v{args.version}"
 
-    with tempfile.TemporaryDirectory(prefix="homelab-addon-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="overlay-build-") as temporary:
         temporary_path = Path(temporary)
         with zipfile.ZipFile(base_zip) as archive:
             archive.extractall(temporary_path)
@@ -88,7 +88,7 @@ def main() -> int:
                 if path.is_file():
                     archive.write(path, (Path(stage_name) / path.relative_to(stage)).as_posix())
 
-    print(f"{output} ({output.stat().st_size:,} bytes), {len(changed)} homelab files:")
+    print(f"{output} ({output.stat().st_size:,} bytes), {len(changed)} overlay files:")
     for relative in changed:
         print(f"  {relative}")
     return 0
