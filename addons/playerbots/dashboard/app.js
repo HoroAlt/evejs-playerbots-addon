@@ -47,7 +47,7 @@ function setView(view) {
   if (view === "pilots") void loadPilots();
   if (view === "operations") { void loadOperations(true); void loadPilotActivity(true); }
   if (view === "killboard") void loadKillboard(true);
-  if (view === "settings") void loadSettings();
+  if (view === "settings") { void loadSettings(); void loadRosterReset(); }
   if (view === "performance") void loadPerformance(true);
 }
 
@@ -678,6 +678,53 @@ $("operation-rows").addEventListener("click", (event) => {
 });
 $("operation-dialog-close").addEventListener("click", () => $("operation-dialog").close());
 $("settings-form").addEventListener("submit", (event) => void saveSettings(event));
+// ---- Delete all bots
+function describeRosterReset(reset) {
+  if (!reset || reset.status === "idle") return "No roster reset has run.";
+  if (reset.status === "running") return `Removing bots: ${number(reset.removed)} of ${number(reset.total)} done, ${number(reset.remaining)} left${reset.failed ? `, ${number(reset.failed)} failed` : ""}.`;
+  return `Last reset finished ${new Date(reset.finishedAt).toLocaleString()}: ${number(reset.removed)} of ${number(reset.total)} removed${reset.failed ? `, ${number(reset.failed)} could not be removed` : ""}.${reset.seedAfterReset ? " Seeding a new roster." : ""}`;
+}
+
+let rosterResetPoll = null;
+async function loadRosterReset() {
+  try {
+    const data = await getJSON("/api/roster-reset");
+    $("roster-reset-status").textContent = describeRosterReset(data.reset);
+    $("roster-reset-start").disabled = data.reset && data.reset.status === "running";
+    if (data.reset && data.reset.status === "running" && !rosterResetPoll) {
+      rosterResetPoll = setInterval(() => void loadRosterReset(), 5_000);
+    } else if (!(data.reset && data.reset.status === "running") && rosterResetPoll) {
+      clearInterval(rosterResetPoll);
+      rosterResetPoll = null;
+      await loadSettings();
+    }
+  } catch (error) {
+    $("roster-reset-status").textContent = `Reset status unavailable: ${error.message || error}`;
+  }
+}
+
+$("roster-reset-start").addEventListener("click", async () => {
+  const confirmation = $("roster-reset-confirmation").value.trim();
+  if (confirmation !== "DELETE ALL BOTS") {
+    $("roster-reset-status").textContent = "Type DELETE ALL BOTS exactly to confirm.";
+    return;
+  }
+  if (!window.confirm("Delete every playerbot now? This cannot be undone.")) return;
+  const button = $("roster-reset-start");
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/roster-reset", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, cache: "no-store",
+      body: JSON.stringify({ confirmation, seedAfterReset: $("roster-reset-reseed").checked }) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Reset refused (${response.status}).`);
+    $("roster-reset-confirmation").value = "";
+    await loadRosterReset();
+  } catch (error) {
+    $("roster-reset-status").textContent = error.message || String(error);
+    button.disabled = false;
+  }
+});
+
 $("reset-settings").addEventListener("click", () => {
   if (!settingDefaults) return;
   if (!window.confirm("Reset every setting on this page to its default and save?")) return;

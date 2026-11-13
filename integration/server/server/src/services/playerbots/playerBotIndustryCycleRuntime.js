@@ -2364,7 +2364,21 @@ function formatCyclesSummary() {
   return [`Industry cycles (${listActiveCycles().length} active):`, ...cycles.map((cycle) => formatCycle(cycle))].join("\n");
 }
 
+// Marks a removed pilot's industry cycle stopped at once.
+function retireCycleForRemovedPilot(characterID, reason = "The pilot was removed from the roster.") {
+  const current = readCycleRecord(characterID);
+  if (!current || ["completed", "stopped", "failed", "cancelled", "canceled", "abandoned"]
+    .includes(String(current.status || "").toLowerCase())) return false;
+  const cycle = JSON.parse(JSON.stringify(current));
+  cycle.status = "stopped";
+  cycle.pending = null;
+  cycle.lastError = reason;
+  saveCycle(cycle);
+  return true;
+}
+
 module.exports = {
+  retireCycleForRemovedPilot,
   _testing: { saveCycle, stepSell, stepJitaRun, stepAcquireMaterials, planMaterialInput, settlePendingPurchase,
     reconcilePendingListing, pendingListingNoEffectFingerprint, confirmPendingListingNoEffect, finish,
     readBestJitaSeedQuote },

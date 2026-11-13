@@ -790,6 +790,21 @@ it is set in the add-on environment file (`.env`). **Reset to defaults** puts
 every field back to its default and saves, after a confirmation; the page
 then reads the settings back and reports anything that was not applied.
 
+## Delete all bots and start over
+
+**Delete all bots** at the bottom of the Settings page removes every playerbot.
+Type `DELETE ALL BOTS` to confirm. Autonomous work and seeding switch off,
+then pilots are removed five at a time: their market orders are cancelled (buy
+order escrow returns to their wallet), their operation and industry cycle are
+closed, they go off line, their roster entry is removed and their character
+is deleted through the normal EveJS character deletion, which hands their
+assets to their corporation. Bot corporations left without members keep their
+record and assets but are not reused, so a new roster founds new
+corporations. Human characters and corporations with human members are not
+touched. With **Seed a new roster when the reset finishes** ticked, work and
+seeding switch back on afterwards. A reset interrupted by a restart carries on
+when the Settings page is opened again. It cannot be undone.
+
 ## Where bots live
 
 Each new bot gets a race, a bloodline of that race and one of the race's

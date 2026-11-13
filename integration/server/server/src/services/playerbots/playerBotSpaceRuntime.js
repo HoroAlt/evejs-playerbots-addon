@@ -1598,7 +1598,24 @@ function shutdown() {
   return true;
 }
 
+// Takes one pilot off line for good: presence, space and its actor session.
+// Used when a pilot is removed from the roster.
+function releaseActor(characterID) {
+  const id = normalizePositiveID(characterID);
+  if (!id) return false;
+  desiredConnectedCharacterIDs.delete(id);
+  const session = actorSessions.get(id);
+  if (!session) return false;
+  try { unregisterPresence(session, id); } catch (error) { log.warn(`[PlayerBots] Presence release failed char=${id}: ${error.message}`); }
+  if (session._space) {
+    try { detachBotActorFromSpace(id, "roster-reset"); } catch (error) { log.warn(`[PlayerBots] Space release failed char=${id}: ${error.message}`); }
+  }
+  actorSessions.delete(id);
+  return true;
+}
+
 module.exports = {
+  releaseActor,
   _testing: { syncActorSession },
   buildBubbleEscapePoint,
   describeError,

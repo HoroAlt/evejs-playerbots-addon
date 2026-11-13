@@ -155,6 +155,20 @@ function saveBot(record, options = {}) {
   return record;
 }
 
+function removeBotRecord(characterID) {
+  const id = Number(characterID);
+  if (!Number.isSafeInteger(id) || id <= 0) return { success: false, message: "PLAYERBOT_CHARACTER_ID_REQUIRED" };
+  const result = repo.remove(TABLE, `/${id}`);
+  botProfilesCache = null;
+  botProfilesByCharacterID = null;
+  planningRosterCache = null;
+  planningRosterCacheAt = 0;
+  rosterSeedContextVersion += 1;
+  rosterSeedContextCache = null;
+  repo.flushTableSync(TABLE);
+  return result && result.success === false ? result : { success: true };
+}
+
 function setBotAutonomyState(characterID, state = {}) {
   const normalizedCharacterID = Number(characterID) || 0;
   if (!Number.isSafeInteger(normalizedCharacterID) || normalizedCharacterID <= 0) {
@@ -956,6 +970,7 @@ function invitePlayerToBotFleet(session, botQuery) {
 }
 
 module.exports = {
+  removeBotRecord,
   DEFAULT_TARGET,
   getConfiguredTarget,
   getOperationalCeiling,

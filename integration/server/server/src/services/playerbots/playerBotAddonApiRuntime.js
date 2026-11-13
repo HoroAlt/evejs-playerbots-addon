@@ -283,6 +283,24 @@ function createPlayerBotAddonApiRuntime(options = {}) {
       });
       return;
     }
+    if (url.pathname === "/v1/dashboard/roster-reset") {
+      const reset = require("./playerBotRosterResetRuntime");
+      if (request.method === "GET") {
+        sendJson(response, 200, { reset: reset.getStatus(), confirmation: reset.CONFIRMATION });
+        return;
+      }
+      if (request.method === "POST") {
+        const body = await readBody(request);
+        const result = reset.startReset({
+          confirmation: body && body.confirmation,
+          seedAfterReset: body && body.seedAfterReset === true,
+        });
+        sendJson(response, result.success ? 202 : 400, result.success
+          ? { reset: result.state, message: result.message }
+          : { error: result.message });
+        return;
+      }
+    }
     if (request.method === "GET" && url.pathname === "/v1/dashboard/seed-status") {
       sendJson(response, 200, rosterSeedStatus());
       return;

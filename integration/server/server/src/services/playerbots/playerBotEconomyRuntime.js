@@ -398,6 +398,17 @@ function listOpenBuyOrders(ownerID, stationID = 0, typeID = 0) {
   }
 }
 
+// Every open order (buy and sell) of one owner.
+function listOpenOrdersForOwner(ownerID) {
+  try {
+    return openMarketDatabase().prepare(
+      "SELECT order_id, bid, station_id, type_id, vol_remaining FROM market_orders WHERE owner_id = ? AND state = 'open'",
+    ).all(Number(ownerID));
+  } catch (error) {
+    return [];
+  }
+}
+
 // Lowest Jita seed ask with stock: the reference traders price against.
 function getJitaReferencePrice(typeID) {
   try {
@@ -436,6 +447,7 @@ function getPlayerBuyOrder(orderID) {
 }
 
 module.exports = {
+  listOpenOrdersForOwner,
   BOT_HUB_STATION_ID,
   REGIONAL_HUB_STATION_IDS,
   getHubStationIDForBot,

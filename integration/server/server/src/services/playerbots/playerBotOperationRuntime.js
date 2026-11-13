@@ -6142,7 +6142,22 @@ function formatOperationsSummary() {
   return [`Operations (${listActiveOperations().length} active):`, ...operations.map((operation) => formatOperation(operation))].join("\n");
 }
 
+// Marks a removed pilot's operation stopped at once. Pending purchases and
+// other unfinished actions are abandoned with the character.
+function retireOperationForRemovedPilot(characterID, reason = "The pilot was removed from the roster.") {
+  const current = readOperationRecord(characterID);
+  if (!current || !ACTIVE_STATUSES.has(current.status) && current.status !== "review" && current.status !== "blocked") return false;
+  const operation = JSON.parse(JSON.stringify(current));
+  operation.status = "stopped";
+  operation.pending = null;
+  operation.lastError = reason;
+  record(operation, reason);
+  saveOperation(operation);
+  return true;
+}
+
 module.exports = {
+  retireOperationForRemovedPilot,
   _testing: {
     advanceMining,
     sellMiningOutput,

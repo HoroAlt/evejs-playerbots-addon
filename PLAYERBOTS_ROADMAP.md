@@ -2268,6 +2268,11 @@ and character orders were removed from the market while the Jita seed was
 restored. Why `dungeonRuntimeState` grows is an EveJS question that was not
 investigated further.
 
+On the fresh world most pilots first need a ship from Jita, the only seeded
+market. With the per-system limit of 30, about half of a 283-pilot roster sat
+queued for Jita with no work; first-ship shopping trips to Jita may now
+number up to 150 (or the configured limit, if higher).
+
 Still to observe in live play: how evenly a full roster spreads, traders'
 orders being filled by miners, and the first bot-versus-bot war, which needs
 a bot corporation to own a structure first.

@@ -127,6 +127,8 @@ td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, mon
 .settings-buttons { display: flex; gap: 8px; }
 .settings-actions button.secondary { background: transparent; border-color: rgba(130, 145, 162, .45); color: var(--muted); }
 .settings-grid .default-hint { color: #5f9fb0; }
+.settings-actions button.danger { background: linear-gradient(135deg, #a13a3a, #7d2626); border-color: rgba(231, 110, 94, .4); }
+.danger-zone { border-color: rgba(231, 110, 94, .35); }
 .seed-monitor { background: #0c141d; border: 1px solid #293746; border-radius: 7px; display: grid; gap: 5px; margin: 18px 20px 0; padding: 13px 15px; }
 .seed-monitor strong { color: var(--text); font-size: 12px; }
 .seed-monitor span { color: var(--cyan); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }

@@ -140,6 +140,13 @@
             <label>Maximum EveJS process CPU (%)<input name="rosterSeedMaxProcessCpuPercent" type="number" min="25" max="95" required><small>Hard cap: 95%. Seeding pauses above the lower of this value and the cap.</small></label>
             <label>Maximum single bot creation time (ms)<input name="rosterSeedMaximumSingleBotMs" type="number" min="25" max="1000" required><small>Hard cap: 1,000 ms. A slow character creation stops the current batch.</small></label>
           </div><div class="seed-monitor" aria-live="polite"><strong id="seed-state">Loading seeding status</strong><span id="seed-progress">—</span><small id="seed-last-batch">The seeder waits for two server-load samples before creating pilots.</small></div></article>
+          <article class="panel settings-section danger-zone"><div class="panel-heading"><div><div class="eyebrow">START OVER</div><h2>Delete all bots</h2><p class="panel-subtitle">Removes every playerbot: cancels its market orders, stops its work, takes it off line and deletes the character through EveJS. Its assets go to its corporation, as for any deleted character. Bot corporations left empty are not reused. Human characters are not touched. This cannot be undone.</p></div></div>
+            <div class="settings-grid">
+              <label>Type DELETE ALL BOTS to confirm<input id="roster-reset-confirmation" type="text" autocomplete="off" spellcheck="false"></label>
+              <label class="checkbox-setting"><input id="roster-reset-reseed" type="checkbox" checked>Seed a new roster when the reset finishes</label>
+            </div>
+            <div class="settings-actions"><span id="roster-reset-status">No roster reset has run.</span><button type="button" id="roster-reset-start" class="danger">Delete all bots</button></div>
+          </article>
           <div class="settings-actions"><span id="settings-updated">Loading saved settings</span><span class="settings-buttons"><button type="button" id="reset-settings" class="secondary">Reset to defaults</button><button type="submit" id="save-settings">Save settings</button></span></div>
         </form>
       </section>
