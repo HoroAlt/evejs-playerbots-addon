@@ -5,13 +5,14 @@ tracking upstream releases plus the changes this server runs on its
 `evejs-stand` (LXC 222, EveJS 261108.1).
 
 `dev` is rebased onto each upstream release; `main` is kept as a plain
-mirror of upstream so merges stay clean:
+mirror of upstream so rebases stay clean:
 
 ```sh
-git fetch upstream
-git checkout dev
-git merge upstream/main
+packaging/sync-upstream.sh
 ```
+
+It fetches `origin`, switches to `dev`, rebases onto `origin/main`, pushes
+`dev` and mirrors `main` to the fork.
 
 ## What we change
 
@@ -53,12 +54,12 @@ cd "$TREE" && docker compose build && docker compose up -d
 them. Rebuild the image after installing: the container runs code baked into
 `evejs-local`, so `docker cp` is only a stopgap.
 
-`verify.py` reports every guarded file that differs; with this branch the five
+`verify.py` reports every guarded file that differs; with this branch the six
 overlaid files above are expected to match and the base patches are invisible
 to it.
 
 ## Versioning
 
 `packaging/VERSION` is the release name; `--base-version` selects the upstream
-release ZIP to overlay (default `0.2.142`). Bump the suffix (`-hl.2`, …) for
+release ZIP to overlay (defaults to the VERSION prefix, e.g. `0.2.146`). Bump the suffix (`-local.2`, …) for
 every build so the running server can be told apart from upstream.
