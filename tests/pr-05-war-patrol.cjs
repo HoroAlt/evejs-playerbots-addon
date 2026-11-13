@@ -74,7 +74,8 @@ async function war() {
         getRoleShipFitProfile: () => ({}),
         normalizePositiveInteger: (n) => Number(n) || 0,
         getOperation: () => null,
-        // Since 0.2.146 the patrol's home is the pilot's empire hub.
+        // startCombat resolves the hub before it asks the war runtime for a
+        // target, so the extracted function needs this helper in scope.
         hubStationFor: () => 10,
         require: (p) =>
           p.includes("warRuntimeState")

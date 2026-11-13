@@ -29,6 +29,19 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def git_state() -> str:
+    """Commit and dirty flag, so a built ZIP can be traced back to the tree."""
+    try:
+        import subprocess
+
+        head = subprocess.check_output(["git", "rev-parse", "--short=12", "HEAD"], cwd=ROOT, text=True).strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                               cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        return f"{head}{'-dirty' if dirty else ''}"
+    except Exception:
+        return ""
+
+
 def write_version(path: Path, version: str) -> None:
     data = json.loads(path.read_text(encoding="utf-8"))
     data["version"] = version
@@ -97,6 +110,10 @@ def main() -> int:
     print(f"{output} ({output.stat().st_size:,} bytes), {len(changed)} overlay files:")
     for relative in changed:
         print(f"  {relative}")
+    provenance = git_state()
+    if provenance:
+        Path(f"{output}.commit").write_text(provenance + "\n", encoding="utf-8")
+        print(f"  commit {provenance}")
     return 0
 
 
