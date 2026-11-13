@@ -273,7 +273,7 @@ specialty and pilot (fresh, mid-career or veteran levels; no capital ship
 skills). Every pilot gets basic Mining, Planetary Industry, and manufacturing
 skills, can fly a Venture and fit Miner I, and can establish a basic PI colony.
 Specialists train higher levels for their main work; only some pilots train
-Mining Barge and can later move up to a Procurer. PI setup is passive after the
+Mining Barge and can later move up to a Retriever, Covetor or Procurer. PI setup is passive after the
 colony is planted, so it does not reserve the bot from other work. Automatic
 colony setup chooses a supported planet class in the bot's assigned system, balances extractor
 programs across that class's existing colonies, and configures its matching P0

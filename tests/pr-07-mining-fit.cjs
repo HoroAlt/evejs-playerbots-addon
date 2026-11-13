@@ -19,6 +19,12 @@ function extract(source, name) {
   return source.slice(match.index, end + 2);
 }
 
+function constant(name) {
+  const match = new RegExp("^const " + name + " = ([^;]+);", "m").exec(SOURCE);
+  assert.ok(match, "Missing constant " + name);
+  return match[1];
+}
+
 function build(names, context) {
   vm.createContext(context);
   vm.runInContext(names.map((name) => extract(SOURCE, name)).join("\n"), context);
@@ -36,36 +42,32 @@ function test(name, fn) {
 
 const attributes = {
   17478: { cpuOutput: 250, powerOutput: 60 },
-  1: { cpu: 298, power: 50 },
-  2: { cpu: 60, power: 10 },
-  3: { cpu: 400, power: 5 },
+  1: { cpu: 250, power: 10 },
+  2: { cpu: 251, power: 10 },
+  3: { cpu: 100, power: 10 },
 };
 
-function fittingStub() {
-  return {
-    getTypeAttributeValue(typeID, attribute) {
-      const row = attributes[Number(typeID)] || {};
-      return Object.prototype.hasOwnProperty.call(row, attribute) ? row[attribute] : undefined;
-    },
-  };
-}
-
 function plannerContext() {
-  return build(["planResourceLoad", "planPriceEstimate", "isOreMiningFit", "pilotHash"], {
+  return build(["planResourceLoad", "isOreMiningFit", "pilotHash", "oreFitForPilot"], {
     ORE_MODULE_GROUP: /strip miner|mining laser/i,
     NON_ORE_MODULE: /ice harvester|gas cloud/i,
-    FIT_RESOURCE_TOLERANCE: 1.05,
+    FIT_RESOURCE_TOLERANCE: Number(constant("FIT_RESOURCE_TOLERANCE")),
     require(id) {
-      if (id.includes("liveFittingState")) return fittingStub();
+      if (id.includes("liveFittingState")) {
+        return {
+          getTypeAttributeValue(typeID, attribute) {
+            const row = attributes[Number(typeID)] || {};
+            return Object.prototype.hasOwnProperty.call(row, attribute) ? row[attribute] : undefined;
+          },
+        };
+      }
       if (id.includes("itemTypeRegistry")) {
         return {
           resolveItemByTypeID(typeID) {
             const types = {
-              100: { name: "Miner II", groupName: "Mining Laser", basePrice: 1000000 },
-              101: { name: "Ice Harvester II", groupName: "Strip Miner", basePrice: 5000000 },
-              102: { name: "Gas Cloud Harvester I", groupName: "Gas Cloud Harvester", basePrice: 900000 },
-              103: { name: "Strip Miner I", groupName: "Strip Miner", basePrice: null },
-              17478: { name: "Retriever", basePrice: 28800000 },
+              100: { name: "Miner II", groupName: "Mining Laser" },
+              101: { name: "Ice Harvester II", groupName: "Strip Miner" },
+              102: { name: "Gas Cloud Harvester I", groupName: "Gas Cloud Harvester" },
             };
             return types[Number(typeID)] || null;
           },
@@ -76,23 +78,19 @@ function plannerContext() {
   });
 }
 
-test("an over-budget CPU fit is not feasible", () => {
+test("a fit exactly at the hull limit is feasible", () => {
   const ctx = plannerContext();
-  const load = ctx.planResourceLoad({ shipTypeID: 17478, moduleTypeIDs: [1] });
-  assert.equal(load.feasible, false);
-  assert.equal(load.cpu, 298);
+  assert.equal(ctx.planResourceLoad({ shipTypeID: 17478, moduleTypeIDs: [1] }).feasible, true);
 });
 
-test("an affordable fit is feasible", () => {
+test("one point over the hull limit is not feasible", () => {
   const ctx = plannerContext();
-  const load = ctx.planResourceLoad({ shipTypeID: 17478, moduleTypeIDs: [2, 2, 2, 2] });
-  assert.equal(load.feasible, true);
+  assert.equal(ctx.planResourceLoad({ shipTypeID: 17478, moduleTypeIDs: [2] }).feasible, false);
 });
 
 test("missing hull attributes do not drop every fit", () => {
   const ctx = plannerContext();
-  const load = ctx.planResourceLoad({ shipTypeID: 999, moduleTypeIDs: [3] });
-  assert.equal(load.feasible, true);
+  assert.equal(ctx.planResourceLoad({ shipTypeID: 999, moduleTypeIDs: [3] }).feasible, true);
 });
 
 test("ice harvesters and gas scoops are not ore fits", () => {
@@ -103,11 +101,24 @@ test("ice harvesters and gas scoops are not ore fits", () => {
   assert.equal(ctx.isOreMiningFit({ moduleTypeIDs: [] }), false);
 });
 
-test("price estimate counts unknown base prices instead of zeroing them", () => {
+test("the best-yield set is chosen deterministically per pilot", () => {
   const ctx = plannerContext();
-  const estimate = ctx.planPriceEstimate({ shipTypeID: 17478, moduleTypeIDs: [103, 100] });
-  assert.equal(estimate.total, 29800000);
-  assert.equal(estimate.unknown, 1);
+  const fits = [
+    { catalogIndex: 0, miningYield: 400, cpu: 300 },
+    { catalogIndex: 1, miningYield: 400, cpu: 400 },
+    { catalogIndex: 2, miningYield: 300, cpu: 100 },
+  ];
+  ctx.oreFitsForHull = () => fits;
+  const picked = new Set();
+  for (let characterID = 140000001; characterID <= 140000020; characterID += 1) {
+    const first = ctx.oreFitForPilot(17478, characterID);
+    const second = ctx.oreFitForPilot(17478, characterID);
+    assert.equal(first, second);
+    assert.ok(first.miningYield === 400);
+    picked.add(first.catalogIndex);
+  }
+  // Both 400-yield fits must be reachable, or the hash tie-break is inert.
+  assert.deepEqual([...picked].sort(), [0, 1]);
 });
 
 console.log(JSON.stringify(results, null, 2));

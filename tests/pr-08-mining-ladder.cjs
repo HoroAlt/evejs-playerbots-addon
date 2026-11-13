@@ -41,15 +41,29 @@ const PROCURER = 17480;
 const MACKINAW = 22548;
 const CAPSULE = 670;
 
-// Mirrors the mining ladder: one barge rung covering three hulls of the same
-// tier, then the exhumer.
-const ladder = [
-  { hullTypeID: VENTURE, hullChoices: [VENTURE] },
-  { hullTypeID: PROCURER, hullChoices: [RETRIEVER, COVETOR, PROCURER] },
-  { hullTypeID: MACKINAW, hullChoices: [MACKINAW] },
-];
+const names = { "Strip Miner I": 17482, "Miner I": 483 };
+const types = { 17482: 17482, 483: 483 };
 
-const ctx = build(["rungIndexOfHull", "rungHullForPilot"], {});
+const ctx = build(["resolveShipLadderRung", "rungIndexOfHull", "rungHullForPilot"], {
+  resolveLadderTypeID(value) {
+    const numeric = Number(value);
+    if (Number.isSafeInteger(numeric) && numeric > 0) return numeric;
+    return types[names[String(value || "")]] || 0;
+  },
+});
+
+const rawLadder = [
+  { name: "Venture", hullTypeID: VENTURE, moduleTypeIDs: ["Miner I", "Miner I"] },
+  { name: "Mining barge", hullTypeID: PROCURER, hullChoices: [RETRIEVER, COVETOR, PROCURER], moduleTypeIDs: [17482] },
+  { name: "Mackinaw", hullTypeID: MACKINAW, moduleTypeIDs: [17482] },
+];
+const ladder = rawLadder.map((rung) => ctx.resolveShipLadderRung(rung));
+
+test("the resolver keeps every offered hull, with the nominal hull first", () => {
+  const rung = ladder[1];
+  assert.equal([...rung.hullChoices].join(","), [PROCURER, RETRIEVER, COVETOR].join(","));
+  assert.equal(rung.hullTypeID, PROCURER);
+});
 
 test("every hull of a multi-hull rung resolves to that rung", () => {
   for (const hull of [RETRIEVER, COVETOR, PROCURER]) {
@@ -58,32 +72,28 @@ test("every hull of a multi-hull rung resolves to that rung", () => {
 });
 
 test("a barge pilot is not treated as off-ladder", () => {
-  // The downgrade bug sent currentIndex -1 pilots back to the Venture rung.
   assert.notEqual(ctx.rungIndexOfHull(ladder, RETRIEVER), -1);
   assert.equal(ctx.rungIndexOfHull(ladder, MACKINAW), 2);
   assert.equal(ctx.rungIndexOfHull(ladder, VENTURE), 0);
-});
-
-test("a hull outside the ladder stays off-ladder", () => {
   assert.equal(ctx.rungIndexOfHull(ladder, CAPSULE), -1);
-  assert.equal(ctx.rungIndexOfHull(ladder, 0), -1);
 });
 
-test("the hull choice is stable per pilot", () => {
+test("an unresolvable module drops the rung instead of flying it", () => {
+  const broken = ctx.resolveShipLadderRung({
+    name: "Broken", hullTypeID: PROCURER, hullChoices: [RETRIEVER], moduleTypeIDs: ["Does Not Exist"],
+  });
+  assert.equal(broken, null);
+});
+
+test("the hull choice is stable per pilot and spreads across the fleet", () => {
   const rung = ladder[1];
-  for (const characterID of [140000011, 140000777, 140001234]) {
+  const seen = new Set();
+  for (let characterID = 140000001; characterID <= 140000030; characterID += 1) {
     const first = ctx.rungHullForPilot({ characterID }, rung);
     const second = ctx.rungHullForPilot({ characterID }, rung);
     assert.equal(first, second);
     assert.ok(rung.hullChoices.includes(first));
-  }
-});
-
-test("the fleet spreads across the offered hulls", () => {
-  const rung = ladder[1];
-  const seen = new Set();
-  for (let characterID = 140000001; characterID <= 140000030; characterID += 1) {
-    seen.add(ctx.rungHullForPilot({ characterID }, rung));
+    seen.add(first);
   }
   assert.equal(seen.size, rung.hullChoices.length);
 });

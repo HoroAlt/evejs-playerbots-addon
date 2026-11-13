@@ -18,7 +18,7 @@ It fetches `origin`, switches to `dev`, rebases onto `origin/main`, pushes
 
 | Area | File | Why |
 | --- | --- | --- |
-| Skill training | `playerBotFitPlanner.js`, `playerBotOperationRuntime.js` | Plan a hull's real fit from the killmail catalog (`fitall.json`), report the next rung that skills block, fly catalog ore fits on Procurer/Mackinaw |
+| Skill training | `playerBotFitPlanner.js`, `playerBotOperationRuntime.js` | Plan a hull's real fit from the killmail catalog (`fitall.json`), report the next rung that skills block, fly catalog ore fits on the barge rungs (Retriever/Covetor/Procurer) and on Mackinaw |
 | Skill training | `playerBotWarMobilizationRuntime.js`, `playerBotAutonomyRuntime.js` | `queueRoleTraining()` + director hook, so pilots above the 7-skill hand-written ceiling keep training |
 | Performance | `playerBotSpaceRuntime.js` | `getActorSession` reads the shared character record instead of deep-copying it |
 | Bug | `careerGoalGatewayService.js` | `careerProgress.syncAchievementProgress` does not exist in this EveJS; fall back to `sync()` (upstream still calls it, log spam) |
