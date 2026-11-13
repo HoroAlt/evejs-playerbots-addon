@@ -1813,7 +1813,6 @@ function applyCatalogFit(bot, rung) {
     name: `${rung.name} (${fit.name})`,
     moduleTypeIDs: [...(fit.plan.moduleTypeIDs || [])],
     droneTypeIDs: [...(fit.plan.droneTypeIDs || [])],
-    fitCargoPlan: [...(fit.plan.cargoPlan || [])],
     catalogIndex: fit.catalogIndex,
   };
 }
@@ -1841,7 +1840,7 @@ function nextShipUpgrade(bot, role = "mining", options = {}) {
     const itemStore = require("../inventory/itemStore");
     const shipID = Number(character.shipID) || 0;
     const fitted = itemStore.listCharacterItems(bot.characterID, { locationID: shipID })
-      .filter((item) => Number(item.flagID) >= 11 && Number(item.flagID) <= 34);
+      .filter((item) => require("../fitting/liveFittingState").isFittedModuleItem(item));
     const fittedModuleCounts = new Map();
     for (const item of fitted) fittedModuleCounts.set(Number(item.typeID), (fittedModuleCounts.get(Number(item.typeID)) || 0) + 1);
     const requiredModuleCounts = new Map();
@@ -2072,25 +2071,33 @@ function hasRoleShipFit(bot, role, options = {}) {
   const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
   const character = getCharacterRecord(bot && bot.characterID) || {};
   const index = rungIndexOfHull(ladder, character.shipTypeID);
-  // A catalog rung is flown in its catalog fit, so the check has to use the
-  // same modules the upgrade path installs.
-  const rung = index >= 0 ? applyCatalogFit(bot, ladder[index]) : null;
-  if (!rung || !canUseRung(bot, rung)) return false;
+  if (index < 0) return false;
   const itemStore = require("../inventory/itemStore");
   const fitting = require("../fitting/liveFittingState");
   const shipID = Number(character.shipID) || 0;
   const fitted = itemStore.listCharacterItems(bot.characterID, { locationID: shipID })
     .filter((item) => fitting.isFittedModuleItem(item));
-  const fittedCounts = new Map();
-  for (const item of fitted) fittedCounts.set(Number(item.typeID), (fittedCounts.get(Number(item.typeID)) || 0) + 1);
-  for (const typeID of rung.moduleTypeIDs || []) {
-    const candidates = fitted.filter((item) => Number(item.typeID) === Number(typeID));
-    const count = fittedCounts.get(Number(typeID)) || 0;
-    if (count <= 0) return false;
-    fittedCounts.set(Number(typeID), count - 1);
-    const module = candidates[candidates.length - count];
-    if (module && !fitting.isEffectivelyOnlineModule(module)) return false;
-  }
+  const modulesMatch = (candidate) => {
+    const remaining = new Map();
+    for (const item of fitted) remaining.set(Number(item.typeID), (remaining.get(Number(item.typeID)) || 0) + 1);
+    for (const typeID of candidate.moduleTypeIDs || []) {
+      const candidates = fitted.filter((item) => Number(item.typeID) === Number(typeID));
+      const count = remaining.get(Number(typeID)) || 0;
+      if (count <= 0) return false;
+      remaining.set(Number(typeID), count - 1);
+      const module = candidates[candidates.length - count];
+      if (module && !fitting.isEffectivelyOnlineModule(module)) return false;
+    }
+    return true;
+  };
+  // A catalog rung is flown in its catalog fit, but a pilot still carrying the
+  // hand-written fit (or one that cannot train the catalog modules yet) is a
+  // valid fit too: it works until the upgrade path refits it.
+  const baseRung = ladder[index];
+  const rungs = [applyCatalogFit(bot, baseRung), baseRung]
+    .filter((candidate, position, all) => candidate && all.indexOf(candidate) === position);
+  const rung = rungs.find((candidate) => canUseRung(bot, candidate) && modulesMatch(candidate)) || null;
+  if (!rung) return false;
   const bay = itemStore.listCharacterItems(bot.characterID, {
     locationID: shipID,
     flagID: itemStore.ITEM_FLAGS.DRONE_BAY,
