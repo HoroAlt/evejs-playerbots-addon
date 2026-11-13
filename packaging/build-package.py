@@ -126,8 +126,10 @@ def main() -> int:
         print(f"  {relative}")
     provenance = git_state()
     if provenance:
-        Path(f"{output}.commit").write_text(provenance + "\n", encoding="utf-8")
-        print(f"  commit {provenance}")
+        base_sha = sha256(base_zip)[:16]
+        Path(f"{output}.commit").write_text(
+            f"{provenance} base={args.base_version} baseSha256={base_sha}\n", encoding="utf-8")
+        print(f"  commit {provenance} (base {args.base_version} {base_sha})")
     return 0
 
 
