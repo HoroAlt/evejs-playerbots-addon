@@ -79,9 +79,15 @@ def main() -> int:
             record["overlaySha256"] = digest
             changed.append(relative)
 
-        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         write_version(stage / "manifest.json", args.version)
-        write_version(stage / "addons" / "playerbots" / "manifest.json", args.version)
+        addon_manifest = stage / "addons" / "playerbots" / "manifest.json"
+        write_version(addon_manifest, args.version)
+        # The add-on manifest is version-stamped above, so its hash in the
+        # integration manifest has to follow or verify.py reports a false diff.
+        addon_manifest_key = "addons/playerbots/manifest.json"
+        if addon_manifest_key in manifest.get("addonFiles", {}):
+            manifest["addonFiles"][addon_manifest_key] = sha256(addon_manifest)
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
             for path in sorted(stage.rglob("*")):
