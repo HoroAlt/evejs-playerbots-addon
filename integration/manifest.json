@@ -76,8 +76,8 @@
     },
     "server/src/services/chat/chatCommands.js": {
       "baseSha256": "e8d294cc1a971f7b1a5cb3b42c7a6d28ce0ffcac1885fdae811240f27b662805",
-      "sourceSha256": "b4ae94fb763b61331448212b457bc651632adf1fdd762e4ed50c1c6d71dc2ea1",
-      "overlaySha256": "b4ae94fb763b61331448212b457bc651632adf1fdd762e4ed50c1c6d71dc2ea1",
+      "sourceSha256": "3431d3ddff286056233382bc8e0ec567410530339e13cd5d7421f0f1077aa0c2",
+      "overlaySha256": "3431d3ddff286056233382bc8e0ec567410530339e13cd5d7421f0f1077aa0c2",
       "subsystem": "chat-commands"
     },
     "server/src/services/chat/commandSessionEffects.js": {
@@ -312,6 +312,12 @@
       "baseSha256": null,
       "sourceSha256": "79d1a11c897a0714878904ed11c424ca061885e30e587a5684f53e9abf3c62aa",
       "overlaySha256": "79d1a11c897a0714878904ed11c424ca061885e30e587a5684f53e9abf3c62aa",
+      "subsystem": "playerbots-core"
+    },
+    "server/src/services/playerbots/playerBotCorpCommands.js": {
+      "baseSha256": null,
+      "sourceSha256": "75326d9b18b111e36f8d2c62976fd7ac5566fcde90f513cee4ae50873ca578b3",
+      "overlaySha256": "75326d9b18b111e36f8d2c62976fd7ac5566fcde90f513cee4ae50873ca578b3",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotCorpEconomyRuntime.js": {
