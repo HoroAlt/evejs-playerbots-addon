@@ -589,6 +589,7 @@ const COMMANDS_HELP_TEXT = [
   "/follow [me|fleet character|stop] and /escort [me|fleet character|stop] — order the playerbots in your fleet to follow or escort an online human fleet member",
   "/attack [all|bot name] — in Fleet chat, order fitted playerbots to attack your most recently locked, legally authorized ship; /attack stop [all|bot name] recalls drones and returns them to base",
   "/playerbots [status|ops [page|systems [page]|system <solarSystemID>]|list|inspect|tasks] | autowork [on|off|status] | orders | haul <bot> <itemID|typeID> <fromStation> <toStation> [qty] | courier post <issuerBot> <carrierBot> <startStation> <endStation> <itemID> <qty> <rewardISK> <collateralISK> | mine <bot> [trips] [station <id>] [norefine] [nosell] | fit <bot> <fittingID|fitting-link> [maxISK] | upgrade <bot> [mining|logistics|security|piracy|sovereignty] [force] | colony <bot> | combat <bot> [security|war|piracy|nullsec-conflict] | sovereignty <bot> | alliance found <CEO bot> | build <bot> <structurePackageItemID> [nullSystemID] | op status|stop|resume <bot> | industry cycle start|status|stop|resume <bot> ... | industry list|jobs <bot> | industry auto set <bot> <blueprintItemID> <runs> <maxISK> | industry auto status|off <bot> | invite|join <bot> | fleet add|join <bot> | fund <bot> <ISK> | pi export ... | undock|warp|route|dock <bot> ... | task pi <bot>|cancel <taskID> | pause|resume <bot> | seed [30-15,000] (staff; enables gradual seeding within configured ceiling)",
+  "/bots corp <recall|work|status|hq|help> [corporationID] (alias /playerbots corp) - whole-corporation orders: recall every pilot to the corporation HQ (NPC station or corporation-owned structure), dock and hold them, then put them to work; /bots help lists every form",
   "/fitbot <fittingID|fitting-link> [maxISK] (send this command in the playerbot's private chat)",
   "/fire [ship name|typeID]",
   "/fire2 [count]",
@@ -1698,6 +1699,15 @@ function executeChatCommand(session, rawMessage, chatHub, options = {}) {
         : "";
       return handledResult(chatHub, session, options, `${result.affected} playerbot(s) in your corporation ${verb}${detail}.`);
     }
+    const corporationOrderMatch = argumentText.match(/^corp\s+(recall|work|status|hq|help)(?:\s+([\s\S]*))?$/i);
+    if (corporationOrderMatch) {
+      return require("../playerbots/playerBotCorpCommands").handle(
+        session,
+        `${corporationOrderMatch[1]} ${corporationOrderMatch[2] || ""}`.trim(),
+        chatHub,
+        options,
+      );
+    }
     if (/^tasks(?:\s|$)/i.test(argumentText)) {
       const filter = argumentText.replace(/^tasks\s*/i, "").trim().toLowerCase();
       const taskRuntime = require("../playerbots/playerBotTaskRuntime");
@@ -2075,7 +2085,9 @@ function executeChatCommand(session, rawMessage, chatHub, options = {}) {
       chatHub,
       session,
       options,
-      "Usage: /playerbots status | ops | ops [page] | ops systems [page] | ops system <solarSystemID> | list [filter] | inspect <bot> | tasks [status] | autowork [on|off|status] | orders | haul <bot> <itemID|typeID> <fromStation> <toStation> [quantity] | courier post <issuerBot> <carrierBot> <startStation> <endStation> <itemID> <qty> <rewardISK> <collateralISK> | mine <bot> [trips] [station <id>] [norefine] [nosell] | upgrade <bot> [mining|logistics|security|piracy|sovereignty] [force] | colony <bot> | combat <bot> [security|war|piracy|nullsec-conflict] | sovereignty <bot> | alliance found <CEO bot> | build <bot> <structurePackageItemID> [nullSystemID] | op status|stop|resume <bot> | industry cycle start <bot> <blueprintTypeID> <runs> <maxISK> [station <id>] [floor <ISK>] | industry cycle status|stop|resume <bot> | industry list|jobs <bot> | industry auto set <bot> <blueprintItemID> <runs> <maxISK> | industry auto status|off <bot> | invite|join <bot> | fleet add|join <bot> | corp pause|resume | fund <bot> <ISK> | pi export set <bot> <planetID> <maxUnits> <maxTaxISK> | pi export status|off <bot> <planetID> | trade quote <bot> <typeID> | trade buy <bot> <typeID> <quantity> <maxUnitPrice> | trade sell <bot> <itemID> [quantity] <minUnitPrice> | trade autosell set <bot> <typeID> <minUnitPrice> <maxUnits> | trade autosell status|off <bot> | trade autobuy set <bot> <typeID> <maxUnitPrice> <targetStock> <maxSpendPerCycle> | trade autobuy status|off <bot> | undock <bot> | warp <bot> <entityID> | dock <bot> <stationID> | task pi <bot> | task cancel|retry <taskID> | pause|resume <bot> | seed [30-15,000] (staff; enables gradual seeding within configured ceiling).",
+      "Usage: /playerbots status | ops | ops [page] | ops systems [page] | ops system <solarSystemID> | list [filter] | inspect <bot> | tasks [status] | autowork [on|off|status] | orders | haul <bot> <itemID|typeID> <fromStation> <toStation> [quantity] | courier post <issuerBot> <carrierBot> <startStation> <endStation> <itemID> <qty> <rewardISK> <collateralISK> | mine <bot> [trips] [station <id>] [norefine] [nosell] | upgrade <bot> [mining|logistics|security|piracy|sovereignty] [force] | colony <bot> | combat <bot> [security|war|piracy|nullsec-conflict] | sovereignty <bot> | alliance found <CEO bot> | build <bot> <structurePackageItemID> [nullSystemID] | op status|stop|resume <bot> | industry cycle start <bot> <blueprintTypeID> <runs> <maxISK> [station <id>] [floor <ISK>] | industry cycle status|stop|resume <bot> | industry list|jobs <bot> | industry auto set <bot> <blueprintItemID> <runs> <maxISK> | industry auto status|off <bot> | invite|join <bot> | fleet add|join <bot> | corp pause|resume | fund <bot> <ISK> | pi export set <bot> <planetID> <maxUnits> <maxTaxISK> | pi export status|off <bot> <planetID> | trade quote <bot> <typeID> | trade buy <bot> <typeID> <quantity> <maxUnitPrice> | trade sell <bot> <itemID> [quantity] <minUnitPrice> | trade autosell set <bot> <typeID> <minUnitPrice> <maxUnits> | trade autosell status|off <bot> | trade autobuy set <bot> <typeID> <maxUnitPrice> <targetStock> <maxSpendPerCycle> | trade autobuy status|off <bot> | undock <bot> | warp <bot> <entityID> | dock <bot> <stationID> | task pi <bot> | task cancel|retry <taskID> | pause|resume <bot> | seed [30-15,000] (staff; enables gradual seeding within configured ceiling)." + (() => {
+        try { return require("../playerbots/playerBotCorpCommands").usageSuffix(argumentText); } catch (error) { return ""; }
+      })(),
     );
   }
 
