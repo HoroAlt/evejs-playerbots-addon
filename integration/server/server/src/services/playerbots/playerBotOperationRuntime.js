@@ -1809,6 +1809,12 @@ const CURATED_MINING_FITS = Object.freeze({
       droneTypeIDs: [2454],
     },
   ],
+  // Catalog barge fits often carry modules the pilot has no skills for. Two
+  // Strip Miners and a Mining Laser Upgrade stay inside every barge's CPU/PG
+  // and inside the skills the ladder already trains.
+  17480: [{ name: "Strip Miner ore fit", moduleTypeIDs: [17482, 17482, 22542], droneTypeIDs: [2454] }],
+  17478: [{ name: "Strip Miner ore fit", moduleTypeIDs: [17482, 17482, 22542], droneTypeIDs: [2454] }],
+  17476: [{ name: "Strip Miner ore fit", moduleTypeIDs: [17482, 17482, 22542], droneTypeIDs: [2454] }],
 });
 
 function curatedMiningFit(bot, rung, hullTypeID) {
@@ -1970,7 +1976,15 @@ function applyCatalogFit(bot, rung) {
     ? currentHull
     : (rungHullForPilot(bot, rung) || rung.hullTypeID);
   const fit = require("./playerBotFitPlanner").oreFitForPilot(hullTypeID, bot && bot.characterID);
-  if (!fit || !fit.plan) {
+  // A catalog fit the pilot cannot fly is worse than a plain one it can: the
+  // director would keep replenishing a hull it is not allowed to buy.
+  const catalogUsable = fit && fit.plan && canUseRung(bot, {
+    ...rung,
+    hullTypeID,
+    moduleTypeIDs: [...(fit.plan.moduleTypeIDs || [])],
+    droneTypeIDs: [...(fit.plan.droneTypeIDs || [])],
+  });
+  if (!catalogUsable) {
     const curated = curatedMiningFit(bot, rung, hullTypeID);
     if (!curated) return { ...rung, hullTypeID };
     return {
