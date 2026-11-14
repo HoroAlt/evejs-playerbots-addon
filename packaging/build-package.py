@@ -19,6 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INTEGRATION = ROOT / "integration" / "server"
+ADDON = ROOT / "addons"
 
 
 def sha256(path: Path) -> str:
@@ -106,6 +107,32 @@ def main() -> int:
             record["overlaySha256"] = digest
             changed.append(relative)
 
+        # The add-on process ships its own dashboard, so those files need the
+        # same treatment: copy our edited copies over the release and refresh
+        # the hashes the installer checks.
+        addon_changed = []
+        for source in sorted(ADDON.rglob("*")):
+            if not source.is_file():
+                continue
+            relative = source.relative_to(ROOT).as_posix()
+            if not relative.startswith("addons/playerbots/"):
+                continue
+            hash_key = relative
+            if hash_key not in manifest.get("addonFiles", {}):
+                continue
+            record = manifest["addonFiles"][hash_key]
+            destination = stage / relative
+            if destination.is_file() and sha256(destination) == sha256(source):
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            digest = sha256(destination)
+            if isinstance(record, dict):
+                record["sha256"] = digest
+            else:
+                manifest["addonFiles"][hash_key] = digest
+            addon_changed.append(relative)
+
         write_version(stage / "manifest.json", args.version)
         addon_manifest = stage / "addons" / "playerbots" / "manifest.json"
         write_version(addon_manifest, args.version)
@@ -124,6 +151,8 @@ def main() -> int:
     print(f"{output} ({output.stat().st_size:,} bytes), {len(changed)} overlay files:")
     for relative in changed:
         print(f"  {relative}")
+    for relative in addon_changed:
+        print(f"  addon: {relative}")
     provenance = git_state()
     if provenance:
         base_sha = sha256(base_zip)[:16]
