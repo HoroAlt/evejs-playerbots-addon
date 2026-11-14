@@ -714,6 +714,20 @@ const OPERATION_STORE = Object.freeze({
   block: (entity, status, reason) => block(entity, status, reason),
 });
 
+// A warp aimed at a station lands the ship inside the station's interaction
+// bubble, from where another warp cannot shorten the remaining distance; the
+// ship would sit there forever. When the distance stops improving after a warp,
+// stop pushing warp and let the docking approach fly the ship in.
+function travelNeedsWarp(distance, operation, stationID, nowMs = Date.now()) {
+  if (!(Number(distance) > DOCK_WARP_RANGE_METERS)) return false;
+  const target = normalizePositiveInteger(operation && operation.travelWarpStationID);
+  const startedAt = Number(operation && operation.travelWarpAtMs) || 0;
+  const startedDistance = Number(operation && operation.travelWarpDistance) || 0;
+  const stalled = target === Number(stationID) && startedAt > 0 &&
+    nowMs - startedAt > 15_000 && Number(distance) >= startedDistance - 1_000;
+  return !stalled;
+}
+
 async function travelToStation(operation, bot, stationID, store = OPERATION_STORE) {
   const character = getCharacterRecord(bot.characterID) || {};
   const dockedStationID = normalizePositiveInteger(character.stationID || character.structureID);
@@ -762,12 +776,22 @@ async function travelToStation(operation, bot, stationID, store = OPERATION_STOR
   }
   const distance = state.distanceTo(stationID);
   if (distance === null) return store.block(operation, "blocked", `Station ${stationID} is not in the local scene.`);
-  if (distance > DOCK_WARP_RANGE_METERS) {
+  if (travelNeedsWarp(distance, operation, stationID)) {
     const result = space.warp(bot, stationID);
     if (!result.success && (operation.incomingThreat || operation.threatRetreat) && /WARP_SCRAMBLED/i.test(String(result.message)))
       return { delayMs: 1000, escapeBlocked: true };
     if (!result.success) return store.block(operation, "blocked", result.message);
+    operation.travelWarpStationID = Number(stationID);
+    operation.travelWarpAtMs = Date.now();
+    operation.travelWarpDistance = distance;
+    store.save(operation);
     return { delayMs: TRAVEL_DELAY_MS };
+  }
+  if (operation.travelWarpStationID || operation.travelWarpAtMs || operation.travelWarpDistance) {
+    delete operation.travelWarpStationID;
+    delete operation.travelWarpAtMs;
+    delete operation.travelWarpDistance;
+    store.save(operation);
   }
   const result = space.dock(bot, stationID);
   if (!result.success) return store.block(operation, "blocked", result.message);
@@ -5390,6 +5414,32 @@ function setDefensiveCombatTarget(characterID, attackerEntityID, reason = "incom
   return true;
 }
 
+// A miner under fire launches the drones it carries at the attacker while the
+// ship aligns out. The ship still leaves: drones buy time to warp, they are
+// never a reason to stay in the belt.
+function launchDefensiveDrones(bot, attackerEntityID) {
+  const id = normalizePositiveInteger(attackerEntityID);
+  if (!id || !bot) return false;
+  try {
+    const space = getSpace();
+    const state = space.getSpaceState(bot);
+    if (!state || !state.inSpace || state.busy) return false;
+    const attached = space.getActorSpace(bot);
+    if (!attached || !attached.session || !attached.entity) return false;
+    const launch = require("./playerBotCombatRuntime")
+      .launchDrones(bot, attached.session, attached.scene, attached.entity.itemID);
+    if (!launch || launch.success !== true) return false;
+    const droneIDs = (launch.drones || [])
+      .map((drone) => normalizePositiveInteger(drone.itemID))
+      .filter((value) => value > 0);
+    if (!droneIDs.length) return false;
+    require("../drone/droneRuntime").commandEngage(attached.session, droneIDs, id);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function setMiningIncomingThreat(characterID, attackerEntityID, details = {}) {
   if (queueInterruption(characterID, { kind: "mining", attackerID: attackerEntityID, details })) return true;
   const operation = getOperation(characterID);
@@ -5407,6 +5457,7 @@ function setMiningIncomingThreat(characterID, attackerEntityID, details = {}) {
   const bot = resolveBotByID(characterID);
   if (bot) getSpace().stopMining(bot);
   if (operation.incomingThreat.action === "retreat") {
+    launchDefensiveDrones(bot, id);
     operation.stage = "return";
     operation.threatReturnStationID = findThreatEvacuationStation(bot);
     operation.dangerousBelts = { ...(operation.dangerousBelts || {}), [String(operation.beltID)]: Date.now() };
