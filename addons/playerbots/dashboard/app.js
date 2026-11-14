@@ -226,8 +226,8 @@ async function loadPilotActivity(force = false) {
       if (bot.queuedWork && isActiveOperation) taskDetails.unshift(`PI setup queued · ${bot.queuedWork.reason}`);
       const tasksText = taskDetails.join("; ") || "No queued or leased task";
       const presenceTag = bot.connected ? "online" : "offline";
-      return `<tr><td><div class="pilot-identity">${pilotPortrait(bot.characterID, bot.characterName)}<span><strong>${escapeHTML(bot.characterName)}</strong><small class="mono">${number(bot.characterID)}</small></span></div></td><td>${escapeHTML(bot.corporationName || "—")}<small class="mono">${number(bot.corporationID)}</small></td><td><span class="state-tag ${presenceTag}">${presenceTag}</span><small>${escapeHTML(activityLocation(bot))}</small></td><td><span class="tag">${escapeHTML(bot.specialty)}</span></td><td><strong>${escapeHTML(operationText)}</strong><small>${escapeHTML(operationDetail)}</small></td><td>${escapeHTML(tasksText)}${taskRows.map((task) => `<small class="mono">${escapeHTML(task.taskID)}</small>`).join("")}</td></tr>`;
-    }).join("") || `<tr><td colspan="6" class="empty">No pilots match this search.</td></tr>`;
+      return `<tr><td><div class="pilot-identity">${pilotPortrait(bot.characterID, bot.characterName)}<span><strong>${escapeHTML(bot.characterName)}</strong><small class="mono">${number(bot.characterID)}</small></span></div></td><td>${escapeHTML(bot.corporationName || "—")}<small class="mono">${number(bot.corporationID)}</small></td><td><span class="state-tag ${presenceTag}">${presenceTag}</span><small>${escapeHTML(activityLocation(bot))}</small></td><td><span class="tag">${escapeHTML(bot.specialty)}</span></td><td>${escapeHTML(bot.shipTypeName || "—")}<small class="mono">${bot.shipTypeID ? number(bot.shipTypeID) : ""}</small></td><td><strong>${escapeHTML(operationText)}</strong><small>${escapeHTML(operationDetail)}</small></td><td>${escapeHTML(tasksText)}${taskRows.map((task) => `<small class="mono">${escapeHTML(task.taskID)}</small>`).join("")}</td></tr>`;
+    }).join("") || `<tr><td colspan="7" class="empty">No pilots match this search.</td></tr>`;
   } catch (error) { setError(error); }
 }
 
