@@ -275,6 +275,15 @@ function createPlayerBotAddonApiRuntime(options = {}) {
       sendJson(response, 200, { operation });
       return;
     }
+    if (url.pathname === "/v1/dashboard/name-library") {
+      const names = options.nameLibrary || require("./playerBotNameLibraryRuntime").getRuntime();
+      if (request.method === "GET") return sendJson(response, 200, names.getStatus());
+      if (request.method === "POST") {
+        const body = await readBody(request);
+        return sendJson(response, 200, names.saveText(body.text));
+      }
+      return sendJson(response, 405, { error: "Method not allowed." });
+    }
     if (request.method === "GET" && url.pathname === "/v1/dashboard/settings") {
       const effectiveAutoworkEnabled = typeof director.isEnabled === "function" ? director.isEnabled() : null;
       sendJson(response, 200, {

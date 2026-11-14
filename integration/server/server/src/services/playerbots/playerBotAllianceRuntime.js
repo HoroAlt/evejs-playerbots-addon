@@ -34,6 +34,32 @@ function getAllianceFoundingPlan(bot) {
   const balance = Math.max(0, Number(require("../account/walletState").getCharacterWallet(bot.characterID)?.balance) || 0);
   if (balance < PLAYERBOT_SEED_RESERVE + ALLIANCE_FOUNDING_COST) return null;
   const formation = require("../corporation/allianceFormationEligibility");
+  const retained = pendingFounding?.allianceOptions || (activeFounding && {
+    name: activeFounding.allianceName, shortName: activeFounding.allianceShortName,
+    description: activeFounding.allianceDescription, url: activeFounding.allianceURL || "",
+  });
+  const position = require("./playerBotRuntime").SPECIALTIES.find((entry) => entry.id === bot.specialty).name;
+  if (retained) {
+    const eligible = formation.checkAllianceFormationEligibility({
+      characterID: Number(bot.characterID), corporationID, allianceOptions: retained, allowDirectorFounder,
+    });
+    return eligible?.success ? { ...retained, allowDirectorFounder, balance,
+      fee: ALLIANCE_FOUNDING_COST, retainedSeedReserve: PLAYERBOT_SEED_RESERVE } : null;
+  }
+  const creator = require("../character/characterState").getCharacterRecord(corporation.creatorID) ||
+    require("../character/characterState").getCharacterRecord(bot.characterID) || {};
+  const names = require("./playerBotNameLibraryRuntime").getRuntime();
+  let selected;
+  try { selected = names.chooseName(creator.raceID, "alliances"); }
+  catch (error) { names.reportOnce(error); return null; }
+  if (selected) {
+    const allianceOptions = { name: selected.name, shortName: selected.ticker, description: position, url: "" };
+    const eligible = formation.checkAllianceFormationEligibility({
+      characterID: Number(bot.characterID), corporationID, allianceOptions, allowDirectorFounder,
+    });
+    return eligible?.success ? { ...allianceOptions, allowDirectorFounder, balance,
+      fee: ALLIANCE_FOUNDING_COST, retainedSeedReserve: PLAYERBOT_SEED_RESERVE } : null;
+  }
   const base = `${String(corporation.corporationName || bot.characterName).trim()} Alliance`.slice(0, 50);
   const tickerBase = String(corporation.tickerName || corporation.shortName || "SOV").toUpperCase().replace(/[^A-Z0-9.-]/g, "").slice(0, 4) || "SOV";
   for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -41,7 +67,7 @@ function getAllianceFoundingPlan(bot) {
     const name = attempt === 0 ? base : `${base.slice(0, 49 - nameSuffix.length)} ${nameSuffix}`;
     const tickerSuffix = attempt === 0 ? "A" : attempt.toString(36).toUpperCase().padStart(2, "0");
     const shortName = `${tickerBase.slice(0, 5 - tickerSuffix.length)}${tickerSuffix}`;
-    const allianceOptions = { name, shortName, description: `${name}, established by ${corporation.corporationName}.`, url: "" };
+    const allianceOptions = { name, shortName, description: position, url: "" };
     const eligible = formation.checkAllianceFormationEligibility({
       characterID: Number(bot.characterID),
       corporationID: positiveID(corporation.corporationID || bot.corporationID),

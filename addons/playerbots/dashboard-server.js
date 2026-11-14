@@ -303,6 +303,18 @@ function createDashboardServer(options = {}) {
       const query = new URLSearchParams({ operationID });
       return proxyApi(response, "/v1/dashboard/operation", `?${query}`);
     }
+    if (url.pathname === "/api/name-library") {
+      if (request.method === "GET") return proxyApi(response, "/v1/dashboard/name-library");
+      if (request.method !== "POST") {
+        send(response, 405, "application/json; charset=utf-8", JSON.stringify({ error: "Method not allowed." }));
+        return;
+      }
+      if (!isSameOriginRequest(request)) {
+        send(response, 403, "application/json; charset=utf-8", JSON.stringify({ error: "Cross-origin dashboard updates are blocked." }));
+        return;
+      }
+      return proxyMutation(response, "/v1/dashboard/name-library", "POST", await readJsonBody(request));
+    }
     if (url.pathname === "/api/settings") {
       if (request.method === "GET") return proxyApi(response, "/v1/dashboard/settings");
       if (request.method !== "POST") {

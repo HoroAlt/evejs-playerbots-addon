@@ -186,3 +186,6 @@ td.mono, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, mon
   .detail-grid { grid-template-columns: 1fr; }.history-section li { grid-template-columns: 1fr; gap: 3px; }
   .footer { align-items: start; flex-direction: column; gap: 5px; }
 }
+#name-library-panel > label { display: block; margin: 0 20px 8px; }
+.name-library-editor { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--text); display: block; font-family: monospace; margin: 0 20px; padding: 12px; resize: vertical; width: calc(100% - 40px); }
+.name-library-error { color: #ffabb1; }

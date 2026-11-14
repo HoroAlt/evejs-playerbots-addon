@@ -409,21 +409,26 @@ function syncBotCorporationSession(session, bot, character = null) {
   return session;
 }
 
-function createCorporationForSpecialty(specialty, founderID, shardIndex = 0) {
+function createCorporationForSpecialty(specialty, founderID, shardIndex = 0, selectedName = null) {
   const foundingOperationID = foundingOperationIDForShard(specialty.id, shardIndex);
   const existing = findCorporationByFoundingOperationID(
     foundingOperationID,
   );
   if (existing) return existing;
-  let corporationName = shardIndex === 0 ? specialty.corpName : `${specialty.corpName} ${shardIndex + 1}`;
-  for (let suffix = 2; findCorporationByName(corporationName); suffix += 1) {
+  let corporationName = selectedName ? selectedName.name : (shardIndex === 0 ? specialty.corpName : `${specialty.corpName} ${shardIndex + 1}`);
+  for (let suffix = 2; !selectedName && findCorporationByName(corporationName); suffix += 1) {
     corporationName = `${specialty.corpName} ${suffix}`;
   }
   const result = createCustomCorporation(founderID, corporationName, {
     foundingOperationID,
   });
   if (!result.success) throw new Error(result.errorMsg || "PLAYERBOT_CORP_CREATE_FAILED");
-  return result.data.corporationRecord;
+  const initialized = require("../corporation/corporationRuntimeState").updateCorporationRecord(
+    result.data.corporationRecord.corporationID,
+    { description: specialty.name, ...(selectedName ? { tickerName: selectedName.ticker } : {}) },
+  );
+  if (!initialized.success) throw new Error(initialized.errorMsg || "PLAYERBOT_CORP_INITIALIZATION_FAILED");
+  return initialized.data?.corporationRecord || getCorporationRecord(result.data.corporationRecord.corporationID);
 }
 
 // Race, school and name for a new bot. Falls back to the original Caldari
@@ -458,6 +463,11 @@ function chooseNewBotIdentity() {
 
 function createBotInTeam(specialty, corporationID, founder = false, shardIndex = 0) {
   const { origin, characterName } = chooseNewBotIdentity();
+  // Check an optional library before creating a founder, so exhaustion cannot create orphan pilots.
+  const selectedName = (founder || !Number(corporationID)) &&
+    !findCorporationByFoundingOperationID(foundingOperationIDForShard(specialty.id, shardIndex))
+    ? require("./playerBotNameLibraryRuntime").getRuntime().chooseName(origin?.raceID || 1, "corporations")
+    : null;
   const characterResult = require("../character/charService").createPlayerBotCharacter(
     characterName,
     specialty.id,
@@ -478,7 +488,7 @@ function createBotInTeam(specialty, corporationID, founder = false, shardIndex =
   require("./playerBotPortraitRuntime").ensurePortrait(characterID);
   let actualCorporationID = Number(corporationID) || 0;
   if (founder || !actualCorporationID) {
-    const corporation = createCorporationForSpecialty(specialty, characterID, shardIndex);
+    const corporation = createCorporationForSpecialty(specialty, characterID, shardIndex, selectedName);
     actualCorporationID = Number(corporation.corporationID);
     ensureCharacterMemberState(actualCorporationID, characterID);
   } else {
