@@ -1494,6 +1494,12 @@ async function advanceMining(operation, bot) {
       }
       return finish(operation, `Mining completed: ${operation.trips} trip(s); ore ${JSON.stringify(operation.oreMined)}, refined minerals ${JSON.stringify(operation.mineralsRefined)}.`);
     }
+    // A pilot that can already fly and afford its next hull buys it now instead
+    // of starting another trip; the director assigns the upgrade next pass.
+    const readyHull = readyHullUpgradeForMining(bot, operation);
+    if (readyHull) {
+      return finish(operation, `Mining stopped after ${operation.trips} trip(s): the pilot is ready for ${readyHull.name}.`);
+    }
     operation.stage = "undock";
     saveOperation(operation);
     return { delayMs: STEP_DELAY_MS };
@@ -1830,6 +1836,18 @@ function curatedMiningFit(bot, rung, hullTypeID) {
     return option;
   }
   return null;
+}
+
+// A mining pilot stops between trips when the next hull and its fit are both
+// ready and paid for. The director assigns the upgrade on its next pass.
+function readyHullUpgradeForMining(bot, operation) {
+  if (!bot || !operation || operation.autonomous !== true || operation.territorialOperation === true) return null;
+  const upgrade = nextShipUpgrade(bot, "mining", { preferReadyHull: true });
+  if (!upgrade || upgrade.replenishOnly === true) return null;
+  const wallet = require("../account/walletState").getCharacterWallet(bot.characterID);
+  const balance = Number(wallet && wallet.balance) || 0;
+  if (balance < (Number(upgrade.minBalance) || 0)) return null;
+  return upgrade;
 }
 
 function resolveLadderTypeID(value) {

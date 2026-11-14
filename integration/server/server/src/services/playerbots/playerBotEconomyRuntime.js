@@ -28,23 +28,12 @@ function hubStationForRace(raceID) {
   return REGIONAL_HUB_STATION_IDS[Number(raceID)] || BOT_HUB_STATION_ID;
 }
 
-// A bot's own hub; pilots created before hubs existed keep New Caldari.
-function getHubStationIDForBot(botOrCharacterID) {
-  let bot = botOrCharacterID && typeof botOrCharacterID === "object" ? botOrCharacterID : null;
-  if (!bot || !Number(bot.hubStationID)) {
-    const characterID = Number(bot ? bot.characterID : botOrCharacterID) || 0;
-    if (characterID) {
-      try {
-        const runtime = require("./playerBotRuntime");
-        const record = typeof runtime.getBotByCharacterID === "function" ? runtime.getBotByCharacterID(characterID) : null;
-        if (record) bot = record;
-      } catch (_) {
-        // Fall through to the shared hub.
-      }
-    }
-  }
-  const hubStationID = Number(bot && bot.hubStationID) || 0;
-  return Object.values(REGIONAL_HUB_STATION_IDS).includes(hubStationID) ? hubStationID : BOT_HUB_STATION_ID;
+// Every pilot trades from one region. The seeded market only covers The Forge,
+// so per-empire hubs left three quarters of the roster where no bid ever
+// reached them; the roster hub is New Caldari until other regions are seeded.
+// shortcut: restore the race lookup when the other hubs get market stock.
+function getHubStationIDForBot() {
+  return BOT_HUB_STATION_ID;
 }
 
 let marketDatabase = null;
