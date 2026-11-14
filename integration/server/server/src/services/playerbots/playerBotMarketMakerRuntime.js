@@ -21,6 +21,9 @@ const MAX_ESCROW_SHARE = 0.25;
 const MAX_ORDER_ISK = 25_000_000;
 const MIN_ORDER_ISK = 50_000;
 const WALLET_RESERVE_ISK = 20_000_000;
+// The seeded market only covers The Forge, so a bid parked in another region is
+// dead capital: the pilot keeps one region and cancels the rest.
+const THE_FORGE_REGION_ID = 10000002;
 
 function enabled(env = process.env) {
   return String(env.EVEJS_PLAYER_BOTS_MARKET_MAKING ?? "1").trim() !== "0";
@@ -71,6 +74,7 @@ async function runMarketMakerPass(bots, deps = defaultDeps()) {
   cursor = (start + slice.length) % Math.max(1, traders.length);
   for (const bot of slice) {
     try {
+      await cancelBidsOutsideTheForge(bot, deps, summary);
       const operation = deps.operations().getOperation(bot.characterID);
       // Leave pilots alone while they travel or settle another market action.
       if (operation && ["active", "holding"].includes(operation.status) && operation.stage !== "done") continue;
@@ -86,6 +90,20 @@ async function runMarketMakerPass(bots, deps = defaultDeps()) {
     }
   }
   return summary;
+}
+
+// Orders left in the old per-empire hubs never meet a seller and lock escrow
+// that the new Forge bids need.
+async function cancelBidsOutsideTheForge(bot, deps, summary) {
+  const economy = deps.economy();
+  const own = economy.listOpenBuyOrders(bot.characterID);
+  if (!own.success) return;
+  for (const order of own.orders || []) {
+    if (Number(order.region_id) === THE_FORGE_REGION_ID) continue;
+    const result = await deps.trade().cancelOrder(bot.characterName, Number(order.order_id));
+    if (result.success) summary.bidsCancelled = (Number(summary.bidsCancelled) || 0) + 1;
+    else summary.failures += 1;
+  }
 }
 
 async function keepBids(bot, stationID, deps, summary) {
