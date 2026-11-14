@@ -47,7 +47,7 @@ function setView(view) {
   if (view === "pilots") void loadPilots();
   if (view === "operations") { void loadOperations(true); void loadPilotActivity(true); }
   if (view === "killboard") void loadKillboard(true);
-  if (view === "settings") { void loadSettings(); void loadRosterReset(); }
+  if (view === "settings") { void loadSettings(); void loadRosterReset(); void loadNameLibrary(); }
   if (view === "performance") void loadPerformance(true);
 }
 
@@ -732,6 +732,52 @@ $("reset-settings").addEventListener("click", () => {
   $("settings-form").requestSubmit();
 });
 window.addEventListener("hashchange", () => setView(location.hash.slice(1) || "overview"));
+
+let nameLibraryEdited = false;
+let nameLibraryRevision = 0;
+function nameLibraryFeedback(message, failed = false) {
+  const status = $("name-library-status");
+  status.textContent = message;
+  status.setAttribute("role", failed ? "alert" : "status");
+  status.classList.toggle("name-library-error", failed);
+}
+async function loadNameLibrary() {
+  if (nameLibraryEdited) return;
+  const revision = nameLibraryRevision;
+  try {
+    const data = await getJSON("/api/name-library");
+    if (nameLibraryEdited || revision !== nameLibraryRevision) return;
+    $("name-library-text").value = data.text;
+    nameLibraryFeedback(data.warning || "Loaded. Applies to newly created organizations.", Boolean(data.warning));
+  } catch (error) { nameLibraryFeedback(error.message || String(error), true); }
+}
+$("name-library-text").addEventListener("input", () => { nameLibraryEdited = true; nameLibraryRevision++; });
+$("name-library-template").addEventListener("click", () => {
+  $("name-library-text").value = JSON.stringify(Object.fromEntries(
+    ["amarr", "caldari", "gallente", "minmatar"].map((key) => [key, { corporations: [], alliances: [] }]),
+  ), null, 2) + "\n";
+  nameLibraryEdited = true;
+  nameLibraryRevision++;
+  nameLibraryFeedback("Template loaded into the editor. Press Save name library to apply it.");
+});
+$("name-library-save").addEventListener("click", async () => {
+  const button = $("name-library-save");
+  const editor = $("name-library-text");
+  const submitted = editor.value;
+  nameLibraryRevision++;
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/name-library", {
+      method: "POST", headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ text: submitted }), cache: "no-store",
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+    if (editor.value === submitted) { editor.value = data.text; nameLibraryEdited = false; }
+    nameLibraryFeedback(data.message);
+  } catch (error) { nameLibraryFeedback(error.message || String(error), true); }
+  finally { button.disabled = false; }
+});
 
 setView(location.hash.slice(1) || "overview");
 void refresh();

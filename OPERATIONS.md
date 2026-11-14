@@ -865,3 +865,26 @@ are not at the HQ. Saved HQs are stored in the game store.
 ## Optional local defense
 
 See [Local defense and safe task resumption](LOCAL_DEFENSE.md) for explicit enablement, responder eligibility, policy settings, safe disengagement and tests. The feature is disabled by default.
+
+## Optional corporation and alliance name library
+
+Open **Settings → Corporation and alliance names**, paste a name library and
+press **Save name library**. **Load template** only fills the editor; it does
+not save. Errors appear next to the buttons and leave the previous library
+active. The basic template is `doc/name-library-template.json` in the source
+repository. Each empire (`amarr`, `caldari`, `gallente`, `minmatar`) has just
+two arrays, `corporations` and `alliances`, containing ASCII names.
+
+Empty arrays keep original naming. Nonempty arrays are used in order when
+new organizations are founded, skipping occupied names and abbreviations.
+If none remain, add more names; numeric suffixes are not added to custom
+names. Existing organizations and pending alliance plans are left alone.
+The founder's race selects the naming style; specialties, membership and
+director work are unchanged. New descriptions use the existing English
+specialty label, with `Sovereignty` for automatically founded alliances.
+
+The game process saves one UTF-8 file, `playerbots-name-library.json`, under
+its resolved persistent GameStore root. Preserve that file with the server's
+data backups. Saving an empty template restores original naming for future
+organizations. The dashboard uses its existing management access boundary;
+this is not an anonymous public upload service.

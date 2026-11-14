@@ -127,6 +127,7 @@ def main() -> int:
         copy_file(ROOT / "doc/COMMUNITY_FITTINGS.md", stage / "COMMUNITY_FITTINGS.md")
         copy_file(ROOT / "doc/PLAYERBOTS_CAPACITY_MODEL.md", stage / "PLAYERBOTS_CAPACITY_MODEL.md")
         copy_file(ROOT / "doc/PLAYERBOTS_ROADMAP.md", stage / "PLAYERBOTS_ROADMAP.md")
+        copy_file(ROOT / "doc/name-library-template.json", stage / "doc/name-library-template.json")
         (stage / "install.sh").write_text(
             "#!/usr/bin/env bash\nset -Eeuo pipefail\n"
             "PACKAGE_DIR=\"$(cd -- \"$(dirname -- \"${BASH_SOURCE[0]}\")\" && pwd)\"\n"

@@ -149,6 +149,12 @@
           </article>
           <div class="settings-actions"><span id="settings-updated">Loading saved settings</span><span class="settings-buttons"><button type="button" id="reset-settings" class="secondary">Reset to defaults</button><button type="submit" id="save-settings">Save settings</button></span></div>
         </form>
+        <article class="panel settings-section" id="name-library-panel">
+          <div class="panel-heading"><div><h2>Corporation and alliance names</h2><p>Applies to newly created organizations. Empty lists keep original naming.</p></div></div>
+          <label for="name-library-text">Name library (JSON)</label>
+          <textarea id="name-library-text" rows="16" spellcheck="false" autocomplete="off" class="name-library-editor"></textarea>
+          <div class="settings-actions"><span id="name-library-status" role="status" aria-live="polite">Not loaded.</span><span class="settings-buttons"><button type="button" id="name-library-template" class="secondary">Load template</button><button type="button" id="name-library-save">Save name library</button></span></div>
+        </article>
       </section>
 
       <section class="page" id="view-performance">
