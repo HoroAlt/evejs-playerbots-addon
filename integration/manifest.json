@@ -532,8 +532,8 @@
     },
     "server/src/services/playerbots/playerBotRuntime.js": {
       "baseSha256": null,
-      "sourceSha256": "aec2014c85d0971d5a3077bada83b2d5e67802d2a8b7438d47bd0e8093f04349",
-      "overlaySha256": "aec2014c85d0971d5a3077bada83b2d5e67802d2a8b7438d47bd0e8093f04349",
+      "sourceSha256": "6eb041d62f2447675b9e1e4e702ab8279ff950b399b4cfe041132c808660963e",
+      "overlaySha256": "6eb041d62f2447675b9e1e4e702ab8279ff950b399b4cfe041132c808660963e",
       "subsystem": "playerbots-core"
     },
     "server/src/services/playerbots/playerBotSovereigntyRuntime.js": {
@@ -761,11 +761,11 @@
   },
   "addonFiles": {
     "addons/playerbots/GUIDE.md": "a580c64a972341953e80656c5d4aa471c8b99203a5de05797f3885db864cf7cc",
-    "addons/playerbots/INSTALLATION.md": "4c9107c753cdcd6c8b2ee74cc81bc6b8de3f8103b9b64aaf498dfaf69d8e8543",
+    "addons/playerbots/INSTALLATION.md": "28b3c39222ce979402dc499b771d1dc059fe166af7ce8ade033627e4672187cf",
     "addons/playerbots/LICENSE": "ce3fb82d9ee80a1cb0e548f9b0560ead52378ee2b4e826fd9459b4acf7075d89",
     "addons/playerbots/LOCAL_DEFENSE.md": "f0e6c59a9338013f24333f2d7a6924940fa524f13f01c0902b95ab2fb5ff74b1",
     "addons/playerbots/OPERATIONS.md": "1d938dcf3c84c7e4ddfbbf5867f73b3cb06f0dcf2b9325988740bc8a63b2fc9c",
-    "addons/playerbots/README.md": "7f6901a2c7d3377ae6290091e706dc7a9393c50b7dd4f8593089f885ab5be2fb",
+    "addons/playerbots/README.md": "65fb0b0d8fd649e5d88ea200e139ccd208718849a17d00e9fa4c1d18fe56cb51",
     "addons/playerbots/THIRD_PARTY_NOTICES.md": "4e53a2b31f3965241b9d182b7764420e4f121213267ebc3936682544204c34dc",
     "addons/playerbots/TROUBLESHOOTING.md": "8f9480ad36a3760ee830e51ff712a283d8de9e23f2511fe1c229fb1ba9cb46b7",
     "addons/playerbots/compose.override.yaml": "e67a22771936e4aec056715056cdbd80215257f964e143f455dabe4d0058cd11",
@@ -775,6 +775,6 @@
     "addons/playerbots/dashboard/styles.css": "11b5aad4846ea46ebbc26d4e965cb360031b64d1a4b84b42df2ca9b1cb91784e",
     "addons/playerbots/dashboard-server.js": "b5e163b6d6f03dc9872cfa85e8aa4e011a32245ec31a0ef720f03529c53d30f3",
     "addons/playerbots/index.js": "8b73fbf55e1d63bb233cf26362f2e8881066271f4304da4a543e687b35cea893",
-    "addons/playerbots/manifest.json": "bfcb0129523929e513196ad9cc73d6c8538eab7fd5aba92e790104d51f524d02"
+    "addons/playerbots/manifest.json": "05f8a2bb5b1f2447525ae28ef2e9ed23a55506ff262838e056ad4169c53a9b3a"
   }
 }

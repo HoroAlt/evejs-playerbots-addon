@@ -2310,3 +2310,11 @@ a bot corporation to own a structure first.
   ten minutes). Normal Crimewatch and war rules still decide targets.
   `EVEJS_PLAYER_BOTS_WILDFIRE=0` turns it off.
 
+## Corporation invitation fix — add-on 0.2.149, 14 Nov 2026
+
+Pull request #11 (@ChaosRemnant): `/playerbots invite` accepted the
+invitation through `Handle_UpdateApplicationStatus`, which EveJS does not
+have, so every invitation failed after it was recorded. It now uses
+`Handle_UpdateApplicationOffer`, the handler EveJS provides and the
+recruitment code already uses, with the same arguments.
+
