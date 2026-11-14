@@ -974,8 +974,9 @@ function stationRegionID(stationID) {
 function engageToleratedBeltRats(bot, operation, ratCount) {
   const nowMs = Date.now();
   if (nowMs - (Number(operation.lastBeltRatEngageAtMs) || 0) < MINING_HIGHSEC_RAT_ENGAGE_COOLDOWN_MS) return false;
-  const targetID = typeof space.getNearestPirateNpcEntityID === "function"
-    ? space.getNearestPirateNpcEntityID(bot, MINING_ESCORT_DISPATCH_RANGE_METERS)
+  const spaceRuntime = getSpace();
+  const targetID = typeof spaceRuntime.getNearestPirateNpcEntityID === "function"
+    ? spaceRuntime.getNearestPirateNpcEntityID(bot, MINING_ESCORT_DISPATCH_RANGE_METERS)
     : 0;
   if (!targetID || !launchDefensiveDrones(bot, targetID)) return false;
   operation.lastBeltRatEngageAtMs = nowMs;
