@@ -2159,8 +2159,18 @@ function findUpgradeMarketStation(bot, rungOrOperation) {
   const economy = require("./playerBotEconomyRuntime");
   const candidates = economy.findSellStationsForPackage(needs);
   if (!candidates.length) return hubStationFor(bot);
-  const outsideJita = candidates.filter((candidate) => !candidate.isJita);
-  const preferred = outsideJita.length ? outsideJita : candidates.filter((candidate) => candidate.isJita);
+  // A station that carries the whole package wins over a nearer one that has
+  // only the modules. Without this the pilot shuttled between a regional hub
+  // (modules) and Jita (hull) until the operation was cancelled.
+  const candidateComplete = (candidate) => {
+    const total = Number(candidate && candidate.totalTypes) || 0;
+    const completeTypes = Number(candidate && candidate.completeTypes) || 0;
+    return total > 0 && completeTypes >= total ? 1 : 0;
+  };
+  const completeCandidates = candidates.filter((candidate) => candidateComplete(candidate) === 1);
+  const usable = completeCandidates.length ? completeCandidates : candidates;
+  const outsideJita = usable.filter((candidate) => !candidate.isJita);
+  const preferred = outsideJita.length ? outsideJita : usable.filter((candidate) => candidate.isJita);
   const stationCandidatesBySystem = new Map();
   for (const candidate of preferred) {
     const station = worldData.getStationByID(Number(candidate.stationID));
@@ -2174,7 +2184,7 @@ function findUpgradeMarketStation(bot, rungOrOperation) {
   const routeCandidates = [];
   for (const [systemID, systemCandidates] of stationCandidatesBySystem) {
     systemCandidates.sort((left, right) =>
-      Number(right.complete) - Number(left.complete) ||
+      candidateComplete(right) - candidateComplete(left) ||
       right.coverage - left.coverage ||
       left.estimatedCost - right.estimatedCost ||
       left.stationID - right.stationID);
@@ -2187,7 +2197,7 @@ function findUpgradeMarketStation(bot, rungOrOperation) {
     routeCandidates.push({ ...candidate, hops: Number(route.hops) || 0 });
   }
   routeCandidates.sort((left, right) =>
-    Number(right.complete) - Number(left.complete) ||
+    candidateComplete(right) - candidateComplete(left) ||
     right.coverage - left.coverage ||
     left.hops - right.hops ||
     right.security - left.security ||
