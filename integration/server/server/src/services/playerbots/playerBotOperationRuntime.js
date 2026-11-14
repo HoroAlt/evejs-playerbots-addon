@@ -1798,17 +1798,19 @@ const SHIP_LADDER = Object.freeze({
 
 // The killmail catalog has no ore fit for the Venture (its 14 records are gas
 // hacks), so the starter hull flies a hand-written fit instead of a single
-// generic module. The T2 fit is used once the pilot can use its modules.
+// generic module. Both options must fit the hull's 240 CPU / 45 PG budget:
+// the first version carried an MWD and hardeners and was rejected by the
+// fitting service on every undock, which held pilots in a fitting loop.
 const CURATED_MINING_FITS = Object.freeze({
   32880: [
     {
       name: "T2 ore fit",
-      moduleTypeIDs: [482, 482, 28576, 5971, 2333, 8521],
+      moduleTypeIDs: [482, 482, 28576, 2333],
       droneTypeIDs: [2454],
     },
     {
       name: "T1 ore fit",
-      moduleTypeIDs: [5239, 5239, 22542, 35656, 2281, 2281],
+      moduleTypeIDs: [5239, 5239, 22542],
       droneTypeIDs: [2454],
     },
   ],
@@ -1817,10 +1819,14 @@ const CURATED_MINING_FITS = Object.freeze({
 function curatedMiningFit(bot, rung, hullTypeID) {
   const options = CURATED_MINING_FITS[Number(hullTypeID)];
   if (!options) return null;
+  const planner = require("./playerBotFitPlanner");
   for (const option of options) {
-    if (canUseRung(bot, { ...rung, moduleTypeIDs: option.moduleTypeIDs, droneTypeIDs: option.droneTypeIDs })) {
-      return option;
-    }
+    if (!canUseRung(bot, { ...rung, moduleTypeIDs: option.moduleTypeIDs, droneTypeIDs: option.droneTypeIDs })) continue;
+    const load = typeof planner.planResourceLoad === "function"
+      ? planner.planResourceLoad({ shipTypeID: Number(hullTypeID), moduleTypeIDs: option.moduleTypeIDs })
+      : { feasible: true };
+    if (load.feasible !== true) continue;
+    return option;
   }
   return null;
 }
@@ -2519,6 +2525,18 @@ function deferUpgradeForSkills(operation, bot) {
 }
 
 function failSavedFitting(operation, bot, status, reason, itemStore) {
+  // A module the hull rejects (CPU/PG, sockets) repeats forever as "holding".
+  // Give the fit a few tries, then block it so the director can move on.
+  if (status === "holding") {
+    operation.fitFailureCount = (Number(operation.fitFailureCount) || 0) + 1;
+    if (operation.fitFailureCount >= 5) {
+      operation.fitFailureCount = 0;
+      status = "blocked";
+      reason = `${reason} The fit was abandoned after 5 attempts.`;
+    }
+  } else {
+    operation.fitFailureCount = 0;
+  }
   if (operation.kind === "fit") {
     const session = getSpace().getActorSession(bot);
     const currentShipID = Number(session.shipID) || 0;

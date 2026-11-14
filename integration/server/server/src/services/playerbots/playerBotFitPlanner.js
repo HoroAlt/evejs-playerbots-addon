@@ -311,6 +311,7 @@ function oreFitForPilot(hullTypeID, characterID) {
 
 module.exports = {
   buildFitPlan,
+  planResourceLoad,
   catalogFitsForHull,
   catalogFitForPilot,
   catalogSkillRequirements,
