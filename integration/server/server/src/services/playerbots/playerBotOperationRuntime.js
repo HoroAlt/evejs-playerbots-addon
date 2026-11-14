@@ -2013,6 +2013,14 @@ function nextShipUpgrade(bot, role = "mining", options = {}) {
   const ladder = (SHIP_LADDER[role] || []).map(resolveShipLadderRung).filter(Boolean);
   const currentIndex = rungIndexOfHull(ladder, currentHull);
   const currentRung = currentIndex >= 0 ? applyCatalogFit(bot, ladder[currentIndex]) : null;
+  const next = ladder[currentIndex + 1] || null;
+  const fittedNext = next ? applyCatalogFit(bot, next) : null;
+  const nextReady = Boolean(fittedNext && hasSkills(bot, fittedNext.requiredSkills) && canUseRung(bot, fittedNext));
+  // A hull whose whole fit the pilot can already fly is worth more than topping
+  // up optional extras on the current one: the new ship arrives fitted anyway.
+  // Drones and the hull's own skills are part of canUseRung, so the pilot never
+  // upgrades into a hull it cannot work with.
+  if (options.preferReadyHull === true && nextReady) return fittedNext;
   if (currentRung && ((currentRung.moduleTypeIDs || []).length || (currentRung.droneTypeIDs || []).length || (currentRung.cargoTypeIDs || []).length)) {
     const itemStore = require("../inventory/itemStore");
     const shipID = Number(character.shipID) || 0;
@@ -2060,11 +2068,7 @@ function nextShipUpgrade(bot, role = "mining", options = {}) {
       return fittedStarter;
     }
   }
-  const next = ladder[currentIndex + 1] || null;
-  const fittedNext = next ? applyCatalogFit(bot, next) : null;
-  return fittedNext && hasSkills(bot, fittedNext.requiredSkills) && canUseRung(bot, fittedNext)
-    ? fittedNext
-    : null;
+  return nextReady ? fittedNext : null;
 }
 
 function startCombatReplenishment(combatOperation, bot) {

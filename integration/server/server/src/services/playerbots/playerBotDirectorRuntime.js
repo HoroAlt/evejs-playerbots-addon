@@ -1166,7 +1166,7 @@ function chooseMiningAssignment(bot, options = {}) {
     // the bot eligible for other work without creating a no-op operation.
     const upgrade = options.skipUpgrade === true || typeof operations.nextShipUpgrade !== "function"
       ? null
-      : operations.nextShipUpgrade(bot, "mining");
+      : operations.nextShipUpgrade(bot, "mining", { preferReadyHull: true });
     const balance = Number(getCharacterWallet(bot.characterID)?.balance) || 0;
     const minimumProfit = Math.max(0, Number(upgrade && upgrade.minEarnedProfit) || 0);
     const earnedProfit = minimumProfit > 0
@@ -1365,7 +1365,7 @@ function chooseAssignment(bot, options = {}) {
     ? bot.specialty
     : "mining";
   const operationRuntime = require("./playerBotOperationRuntime");
-  const upgrade = operationRuntime.nextShipUpgrade(bot, role);
+  const upgrade = operationRuntime.nextShipUpgrade(bot, role, { preferReadyHull: true });
   const warShipSupport = bot.specialty === "security"
     ? require("./playerBotWarMobilizationRuntime").getCombatUpgradeSupport(bot)
     : null;
