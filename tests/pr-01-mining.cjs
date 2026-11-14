@@ -138,6 +138,12 @@ async function mining() {
           getMiningModules: () => [{}],
           worldData: { getAsteroidBeltsForSystem: () => [{ itemID: 7 }] },
           stationSystemID: () => 100,
+          // Base relocation to The Forge is a separate rule; this case only
+          // exercises the low-sec relocation.
+          stationRegionID: () => 10000002,
+          beltSecurityForMining: () => 0.5,
+          THE_FORGE_REGION_ID: 10000002,
+          THE_FORGE_MINING_STATION_ID: 60000400,
           pickBelt: () => null,
           findNearestMiningStation: () => ({
             stationID: 20,
