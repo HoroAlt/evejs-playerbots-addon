@@ -461,10 +461,39 @@ function chooseNewBotIdentity() {
   return { origin, characterName };
 }
 
+// Wildfire Protocol: the Revenge Inc. corporation, founded by its first pilot.
+function joinRevengeCorporation(characterID) {
+  const wildfire = require("./playerBotWildfireRuntime");
+  const existing = findCorporationByFoundingOperationID(wildfire.REVENGE_FOUNDING_OPERATION_ID);
+  if (existing) {
+    const affiliation = setCharacterAffiliation(characterID, existing.corporationID, existing.allianceID || null);
+    if (!affiliation.success) throw new Error(affiliation.errorMsg || "PLAYERBOT_AFFILIATION_FAILED");
+    ensureCharacterMemberState(existing.corporationID, characterID);
+    return Number(existing.corporationID);
+  }
+  let corporationName = wildfire.REVENGE_CORPORATION_NAME;
+  for (let suffix = 2; findCorporationByName(corporationName); suffix += 1) {
+    corporationName = `${wildfire.REVENGE_CORPORATION_NAME} ${suffix}`;
+  }
+  const result = createCustomCorporation(characterID, corporationName, {
+    foundingOperationID: wildfire.REVENGE_FOUNDING_OPERATION_ID,
+  });
+  if (!result.success) throw new Error(result.errorMsg || "PLAYERBOT_CORP_CREATE_FAILED");
+  ensureCharacterMemberState(Number(result.data.corporationRecord.corporationID), characterID);
+  return Number(result.data.corporationRecord.corporationID);
+}
+
 function createBotInTeam(specialty, corporationID, founder = false, shardIndex = 0) {
+  let revenge = false;
+  try { revenge = require("./playerBotWildfireRuntime").shouldJoinRevenge(); } catch (_) { revenge = false; }
+  if (revenge) {
+    specialty = SPECIALTIES.find((entry) => entry.id === "piracy") || specialty;
+    founder = false;
+    corporationID = 0;
+  }
   const { origin, characterName } = chooseNewBotIdentity();
   // Check an optional library before creating a founder, so exhaustion cannot create orphan pilots.
-  const selectedName = (founder || !Number(corporationID)) &&
+  const selectedName = !revenge && (founder || !Number(corporationID)) &&
     !findCorporationByFoundingOperationID(foundingOperationIDForShard(specialty.id, shardIndex))
     ? require("./playerBotNameLibraryRuntime").getRuntime().chooseName(origin?.raceID || 1, "corporations")
     : null;
@@ -487,7 +516,9 @@ function createBotInTeam(specialty, corporationID, founder = false, shardIndex =
   // portrait URL already resolves to an image.
   require("./playerBotPortraitRuntime").ensurePortrait(characterID);
   let actualCorporationID = Number(corporationID) || 0;
-  if (founder || !actualCorporationID) {
+  if (revenge) {
+    actualCorporationID = joinRevengeCorporation(characterID);
+  } else if (founder || !actualCorporationID) {
     const corporation = createCorporationForSpecialty(specialty, characterID, shardIndex, selectedName);
     actualCorporationID = Number(corporation.corporationID);
     ensureCharacterMemberState(actualCorporationID, characterID);
@@ -506,6 +537,7 @@ function createBotInTeam(specialty, corporationID, founder = false, shardIndex =
     currentTask: null,
     createdAt: new Date().toISOString(),
     founder: Boolean(founder),
+    ...(revenge ? { wildfire: true } : {}),
     ...(origin ? {
       raceID: origin.raceID,
       hubStationID: require("./playerBotEconomyRuntime").hubStationForRace(origin.raceID),

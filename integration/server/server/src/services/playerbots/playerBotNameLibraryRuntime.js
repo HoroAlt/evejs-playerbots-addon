@@ -34,6 +34,8 @@ function parseText(text) {
         if (typeof name !== "string" || !name.trim() || !/^[\x20-\x7E]+$/.test(name)) {
           throw invalid(`${empire}.${type}[${index}] must be a non-empty ASCII name.`);
         }
+        // The client shows at most 50 characters for corporation and alliance names.
+        if (name.trim().length > 50) throw invalid(`${empire}.${type}[${index}] is longer than 50 characters.`);
         return name.trim();
       });
     }

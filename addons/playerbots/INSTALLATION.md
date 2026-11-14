@@ -43,11 +43,11 @@ installation never resets, moves, or reseeds them.
 
 ## Install from the release ZIP
 
-Extract `evejs-playerbots-addon-v0.2.147.zip`. In a terminal, pass the EveJS
+Extract `evejs-playerbots-addon-v0.2.148.zip`. In a terminal, pass the EveJS
 source directory as the single positional argument:
 
 ```sh
-cd EveJS-Playerbots-Addon-v0.2.147
+cd EveJS-Playerbots-Addon-v0.2.148
 EVEJS_SOURCE="/path/to/your EveJS checkout"
 ./install.sh "$EVEJS_SOURCE"
 ```
@@ -83,6 +83,23 @@ To perform the same install and then build/start the EveJS server and add-on:
 ```sh
 ./install.sh --start "$EVEJS_SOURCE"
 ```
+
+After installing, and after every add-on update, rebuild the EveJS image so
+it contains the new server files and the add-on folder, then recreate
+`server` and `playerbots-addon`. `--start` does this for you; by hand:
+
+```sh
+docker compose -f compose.yaml -f addons/playerbots/compose.override.yaml build init
+docker compose -f compose.yaml -f addons/playerbots/compose.override.yaml up -d --no-deps --force-recreate server playerbots-addon
+```
+
+Add the same extra `-f` files your installation uses (for example the EveJS
+launcher's `.evejs-launcher/compose.images.yaml` and
+`.evejs-launcher/compose.mods.yaml`). Do not add `--pull always`: `evejs-local`
+is built on your machine and is not on any registry. The installer also
+updates `.dockerignore` so the image includes `addons/playerbots`; an image
+built from an unchanged `.dockerignore` lacks the add-on and its container
+exits at once.
 
 The installation step itself never creates bots. The `--start` option assumes
 that Market is already running and healthy. It

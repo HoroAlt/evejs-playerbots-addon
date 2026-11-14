@@ -1613,6 +1613,11 @@ async function runDirectorInternal(bots = [], options = {}) {
       );
     }
     try {
+      require("./playerBotWildfireRuntime").noteHumanPresence(require("../chat/sessionRegistry").getSessions());
+    } catch (error) {
+      require("../../utils/logger").debug(`[PlayerBots] Presence note skipped: ${error.message}`);
+    }
+    try {
       const rivalryWar = await require("./playerBotStructureConflictWarRuntime")
         .declareRivalryWar(allRosterBots, { humanControlledBotIDs });
       if (rivalryWar.declared) {

@@ -2289,3 +2289,24 @@ a bot corporation to own a structure first.
   character deleted through EveJS) and can seed a new roster afterwards.
   Tested with simulated services; not yet run on a live roster.
 
+## Name library, image fix and Wildfire Protocol — add-on 0.2.148, 14 Nov 2026
+
+- **Name library (pull request #10, @gzy40347).** Settings has an optional
+  corporation and alliance name library per empire, stored as one JSON file
+  in the game-store folder; empty lists keep the original names. Review
+  added a 50-character limit per name.
+- **Docker image.** EveJS's stock `.dockerignore` leaves `addons/` out of the
+  `evejs-local` image, so installations that build the image got an add-on
+  container that exited at once. The add-on now installs a `.dockerignore`
+  that includes `addons/playerbots`, and the installation guide says to
+  rebuild the image (`build init`) after every add-on install or update.
+- **Bot war patrols.** War patrols skipped other playerbots when looking for
+  war opponents, so a war between bot corporations produced no patrols. With
+  bot-versus-bot combat on, bot opponents are now found too.
+- **Wildfire Protocol.** Every "Delete all bots" is counted. After the first,
+  about one new pilot in a hundred joins Revenge Inc., a piracy corporation
+  whose pilots patrol systems human players visited in the last week or own
+  structures in, and say "burn" in Local when they open fire (at most every
+  ten minutes). Normal Crimewatch and war rules still decide targets.
+  `EVEJS_PLAYER_BOTS_WILDFIRE=0` turns it off.
+

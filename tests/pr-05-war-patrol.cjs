@@ -74,6 +74,8 @@ async function war() {
         getRoleShipFitProfile: () => ({}),
         normalizePositiveInteger: (n) => Number(n) || 0,
         getOperation: () => null,
+        // Since 0.2.146 the patrol's home is the pilot's empire hub.
+        hubStationFor: () => 10,
         require: (p) =>
           p.includes("warRuntimeState")
             ? { hasActiveWarForCharacter: () => true }

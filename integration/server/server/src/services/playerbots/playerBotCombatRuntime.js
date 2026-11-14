@@ -370,7 +370,28 @@ function listPirateBaseCandidates(bot, maxHops = 64, options = {}) {
   return { success: true, candidates };
 }
 
+// Wildfire Protocol: Revenge Inc. pilots hunt where human players have been.
+function findWildfireTargetSystem(bot) {
+  const wildfire = require("./playerBotWildfireRuntime");
+  if (!wildfire.isRevengePilot(bot) || !wildfire.isActive()) return null;
+  const space = require("./playerBotSpaceRuntime");
+  let best = null;
+  for (const systemID of wildfire.listTargetSystems().slice(0, 24)) {
+    const stationID = (worldData.getStationsForSystem(systemID) || [])
+      .map((station) => normalizeID(station.stationID || station.itemID)).filter(Boolean).sort((a, b) => a - b)[0];
+    if (!stationID) continue;
+    const route = space.previewSystemRoute(bot, systemID);
+    if (!route.success) continue;
+    if (!best || route.hops < best.hops) {
+      best = { success: true, systemID, stationID, hops: route.hops, risk: route.risk, factionKey: "wildfire" };
+    }
+  }
+  return best;
+}
+
 function findNearestPirateBase(bot, maxHops = 64) {
+  const wildfireTarget = findWildfireTargetSystem(bot);
+  if (wildfireTarget) return wildfireTarget;
   const space = require("./playerBotSpaceRuntime");
   const rotationEnabled = isPatrolRotationEnabled();
   const listed = listPirateBaseCandidates(bot, maxHops, rotationEnabled ? {} : { maxCandidates: 1 });
@@ -412,7 +433,8 @@ function findNearestWarBase(bot, maxHops = 20) {
   const space = require("./playerBotSpaceRuntime");
   const startSystemID = getCurrentSystemID(bot);
   if (!startSystemID) return { success: false, message: "Could not determine the bot's current system." };
-  const managedIDs = new Set(require("./playerBotRuntime").listBots()
+  // With bot-versus-bot combat on, bot war opponents are targets too.
+  const managedIDs = botVersusBotCombatEnabled() ? new Set() : new Set(require("./playerBotRuntime").listBots()
     .map((entry) => Number(entry.characterID) || 0));
   const wars = require("../corporation/warRuntimeState");
   const characterState = require("../character/characterState");
@@ -1811,6 +1833,9 @@ async function advanceCombat(operation, bot, kit) {
     }
     operation.targetID = Number(activeTarget.itemID);
     operation.targetLabel = String(activeTarget.itemName || activeTarget.itemID);
+    if (operation.mode === "piracy" && require("./playerBotWildfireRuntime").isRevengePilot(bot)) {
+      require("./playerBotWildfireRuntime").sayBurn(session, bot.characterID);
+    }
     operation.pendingCombatAction = { kind: "engage", targetID: Number(activeTarget.itemID), startedAt: new Date().toISOString() };
     kit.save(operation);
     const response = require("../drone/droneRuntime").commandEngage(

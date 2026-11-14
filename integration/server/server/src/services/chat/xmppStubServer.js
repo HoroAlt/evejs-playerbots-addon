@@ -1556,6 +1556,19 @@ function broadcastPlayerBotLocalPresence(roomName, characterID, available) {
   return sent;
 }
 
+// A line said by a playerbot in a room it is present in (playerbot add-on).
+function broadcastPlayerBotLocalMessage(roomName, characterID, message) {
+  const normalizedCharacterID = Number(characterID) || 0;
+  const text = String(message || "").slice(0, 200);
+  if (!roomName || !normalizedCharacterID || !text) return 0;
+  const roomJid = buildConferenceRoomJid(roomName);
+  const members = [...(roomMembers.get(roomJid) || [])]
+    .filter((member) => member && member.socket && !member.socket.destroyed && member.boundJid);
+  if (!members.length) return 0;
+  deliverRoomMessage(roomJid, String(normalizedCharacterID), text, members);
+  return members.length;
+}
+
 function broadcastPlayerBotScopedPresence(roomName, characterID, available) {
   const normalizedRoomName = String(roomName || "").trim().toLowerCase();
   const normalizedCharacterID = Number(characterID) || 0;
@@ -3667,6 +3680,7 @@ function handleSocket(socket) {
 
 module.exports = {
   broadcastPlayerBotScopedPresence,
+  broadcastPlayerBotLocalMessage,
   broadcastPlayerBotLocalPresence,
   broadcastRoomSubject,
   inviteCharacterToRoom,

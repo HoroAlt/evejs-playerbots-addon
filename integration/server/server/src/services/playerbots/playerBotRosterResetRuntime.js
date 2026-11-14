@@ -104,6 +104,11 @@ function startReset(options = {}) {
   const switchedOff = configuration.updateSettings({ autoworkEnabled: false, rosterSeedEnabled: false });
   if (!switchedOff.success) return { success: false, message: switchedOff.message };
   setDirectorEnabled(false);
+  try {
+    require("./playerBotWildfireRuntime").noteRosterReset();
+  } catch (_) {
+    // The roster reset does not depend on it.
+  }
   const bots = deps.playerBots().listBots();
   const corporationIDs = [...new Set(bots.map((bot) => Number(bot.corporationID)).filter(Boolean))];
   const state = writeState({
