@@ -910,7 +910,7 @@ function inviteBotToPlayerCorporation(session, botQuery) {
         Number(item.status) === CORP_INVITED_BY_CORPORATION)
       .sort((left, right) => Number(right.applicationID) - Number(left.applicationID))[0];
     if (!application) throw new Error("INVITATION_NOT_RECORDED");
-    service.Handle_UpdateApplicationStatus([
+    service.Handle_UpdateApplicationOffer([
       application.applicationID,
       bot.characterID,
       targetCorporationID,
