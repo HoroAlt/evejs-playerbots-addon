@@ -8,6 +8,43 @@ The dashboard binds to `0.0.0.0:8080` and does not require a login. Check
 through a paginated API; settings updates require a same-origin request. The
 private server API token is never sent to the browser.
 
+## Recreate only the add-on container (launcher or modded Compose setups)
+
+If the dashboard or the bot driver stops answering, or after editing the
+add-on settings in `.env`, recreate just the `playerbots-addon` container. The
+game server and market keep running. Run this from the EveJS checkout, with
+every Compose file your installation uses: the EveJS launcher adds
+`.evejs-launcher/compose.images.yaml` and `.evejs-launcher/compose.mods.yaml`;
+leave them out if you do not use the launcher. Use the override that
+`install.py` placed in `addons/playerbots/`, not the one in the extracted ZIP
+folder, so the command does not change with each release. The project name
+(`-p evejs`) must be the one your containers already use (the prefix of their
+names, such as `evejs-server-1`); otherwise Compose starts duplicates.
+
+Windows PowerShell:
+
+```powershell
+docker compose -p evejs -f compose.yaml -f .evejs-launcher/compose.images.yaml -f .evejs-launcher/compose.mods.yaml -f addons/playerbots/compose.override.yaml up -d --no-deps --force-recreate playerbots-addon
+Start-Sleep -Seconds 20
+node -e "async function main(){for(const p of ['/api/summary','/api/seed-status']){const r=await fetch('http://127.0.0.1:8080'+p);let b;try{b=await r.json()}catch{b={}};console.log(JSON.stringify({endpoint:p,status:r.status,data:b}))}}main().catch(e=>{console.error(e.message);process.exit(1)})"
+docker logs evejs-playerbots-addon-1 --since 90s
+```
+
+Linux or macOS:
+
+```sh
+docker compose -p evejs -f compose.yaml -f .evejs-launcher/compose.images.yaml -f .evejs-launcher/compose.mods.yaml -f addons/playerbots/compose.override.yaml up -d --no-deps --force-recreate playerbots-addon
+sleep 20
+curl -s http://127.0.0.1:8080/api/seed-status
+docker logs evejs-playerbots-addon-1 --since 90s
+```
+
+Both endpoints should answer with status 200. This does not apply changes to
+the game server's own settings (the `EVEJS_PLAYER_BOTS_...` variables of the
+`server` service, such as the online or per-system limits); for those, recreate
+`server` as well by naming it after `playerbots-addon`, which restarts the
+game. Thanks to Gordo for the original command.
+
 ## The browser shows a cached login prompt
 
 The current dashboard does not use login authentication. Clear the browser's
