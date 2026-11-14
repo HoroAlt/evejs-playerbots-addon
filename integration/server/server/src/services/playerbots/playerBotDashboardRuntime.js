@@ -58,6 +58,22 @@ function createPlayerBotDashboardRuntime(options = {}) {
   let killboardCorporationNames = new Map();
   let killboardTypeNames = new Map();
   let killboardTypes = new Map();
+  // Ship names for the roster come from the same type registry the killboard
+  // uses; the cache is shared so a hull is resolved once.
+  const shipTypeName = (typeID) => {
+    const id = positiveInteger(typeID);
+    if (!id) return "";
+    if (killboardTypeNames.has(id)) return killboardTypeNames.get(id);
+    let type = null;
+    try {
+      type = require("../inventory/itemTypeRegistry").resolveItemByTypeID(id) || null;
+    } catch (_) {
+      type = null;
+    }
+    const name = String(type && (type.name || type.typeName) || "");
+    if (name) killboardTypeNames.set(id, name);
+    return name;
+  };
   let killboardFactionNames = new Map();
   let killboardKnownCharacters = new Map();
 
@@ -763,7 +779,7 @@ function createPlayerBotDashboardRuntime(options = {}) {
         stationID: positiveInteger(presence.stationID),
         structureID: positiveInteger(presence.structureID),
         shipTypeID: positiveInteger(character.shipTypeID),
-        shipTypeName: typeName(positiveInteger(character.shipTypeID)),
+        shipTypeName: shipTypeName(positiveInteger(character.shipTypeID)),
         operation: currentWork ? {
           operationID: String(currentWork.operationID || currentWork.cycleID || ""),
           kind: String(currentWork.kind || ""),
