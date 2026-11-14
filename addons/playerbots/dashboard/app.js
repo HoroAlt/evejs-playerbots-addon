@@ -733,8 +733,6 @@ $("reset-settings").addEventListener("click", () => {
 });
 window.addEventListener("hashchange", () => setView(location.hash.slice(1) || "overview"));
 
-
-
 let nameLibraryEdited = false;
 let nameLibraryRevision = 0;
 function nameLibraryFeedback(message, failed = false) {
