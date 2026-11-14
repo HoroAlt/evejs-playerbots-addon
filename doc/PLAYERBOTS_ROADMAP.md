@@ -2277,3 +2277,15 @@ Still to observe in live play: how evenly a full roster spreads, traders'
 orders being filled by miners, and the first bot-versus-bot war, which needs
 a bot corporation to own a structure first.
 
+## Settings defaults, Jita shopping and roster reset — add-on 0.2.147, 14 Nov 2026
+
+- The Settings page shows each setting's default (built-in, or the
+  installation's `.env` value) and can reset every field to it.
+- First-ship shopping trips to Jita, the only seeded market, may number up to
+  150 instead of the per-system limit of 30, which had left half of a fresh
+  roster queued with no work.
+- **Delete all bots** on the Settings page removes every playerbot after a
+  typed confirmation (market orders cancelled, work closed, session released,
+  character deleted through EveJS) and can seed a new roster afterwards.
+  Tested with simulated services; not yet run on a live roster.
+
