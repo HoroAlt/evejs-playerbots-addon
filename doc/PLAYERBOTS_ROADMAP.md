@@ -2310,6 +2310,22 @@ a bot corporation to own a structure first.
   ten minutes). Normal Crimewatch and war rules still decide targets.
   `EVEJS_PLAYER_BOTS_WILDFIRE=0` turns it off.
 
+## Universe site upkeep — add-on 0.2.150, 14 Nov 2026
+
+EveJS seeds about sixteen exploration and combat sites in every solar system
+it loads and keeps them for good in `dungeonRuntimeState`, which lives in
+memory as well as on disk. Bots travel through hundreds of systems, and on a
+300-pilot test server the table reached 290 MB in less than a day; the server
+process grew to about 6 GB, the host ran out of memory, space ticks stalled
+for minutes, and EveJS lost its persistence lease and restarted in a loop.
+The director now removes, through `dungeonRuntime.purgeInstances`, the seeded
+`universe_dungeon` sites of systems that are not loaded and that no human
+pilot has been in for 30 days, at most 500 per pass once a minute. A system
+that unloads keeps its sites for 30 minutes first; systems not loaded since
+start-up are pruned at once, which clears what built up before. Mining belts, incursions and sovereignty sites are not touched, and
+EveJS seeds a pruned system again when it loads.
+`EVEJS_PLAYER_BOTS_SITE_PRUNE=0` turns it off.
+
 ## Corporation invitation fix — add-on 0.2.149, 14 Nov 2026
 
 Pull request #11 (@ChaosRemnant): `/playerbots invite` accepted the

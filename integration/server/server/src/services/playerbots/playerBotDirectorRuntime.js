@@ -1617,6 +1617,11 @@ async function runDirectorInternal(bots = [], options = {}) {
     } catch (error) {
       require("../../utils/logger").debug(`[PlayerBots] Presence note skipped: ${error.message}`);
     }
+    const siteUpkeep = require("./playerBotSiteUpkeepRuntime").runSiteUpkeepPass();
+    if (siteUpkeep.purged) summary.universeSitesPruned = siteUpkeep.purged;
+    if (siteUpkeep.error) {
+      require("../../utils/logger").warn(`[PlayerBots] Universe site upkeep will retry: ${siteUpkeep.error}.`);
+    }
     try {
       const rivalryWar = await require("./playerBotStructureConflictWarRuntime")
         .declareRivalryWar(allRosterBots, { humanControlledBotIDs });
