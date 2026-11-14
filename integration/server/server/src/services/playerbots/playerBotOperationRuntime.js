@@ -928,8 +928,14 @@ function pickBelt(operation, now = Date.now()) {
   const belts = worldData.getAsteroidBeltsForSystem(stationSystemID(operation.homeStationID)) || [];
   if (!belts.length) return null;
   const danger = operation.dangerousBelts || {};
+  const recent = operation.recentBelts || {};
   const safe = belts.filter((belt) => now - Number(danger[String(belt.itemID)] || 0) > BELT_DANGER_MS);
-  return safe.length ? safe[operation.trips % safe.length] : null;
+  if (!safe.length) return null;
+  // Rotate instead of circling one belt: the pilot's least recently used belt
+  // wins, so a camped belt is left alone even before its alarm expires.
+  return safe.slice().sort((left, right) =>
+    Number(recent[String(left.itemID)] || 0) - Number(recent[String(right.itemID)] || 0) ||
+    Number(left.itemID) - Number(right.itemID))[0];
 }
 
 function shouldWithdrawMinerWithoutEscort(state) {
@@ -1033,6 +1039,27 @@ async function advanceMining(operation, bot) {
     }
     const belts = worldData.getAsteroidBeltsForSystem(stationSystemID(operation.homeStationID)) || [];
     if (!belts.length) return block(operation, "blocked", `The system for ${operation.homeStationID} has no asteroid belts.`);
+    // Mining above 0.45 security is the rule the base has always used when it
+    // relocates; a base that starts in low-sec must follow it too. Taisy (0.33)
+    // otherwise sends Ventures into belt rats they cannot answer.
+    const homeSystemID = stationSystemID(operation.homeStationID);
+    const homeSystem = typeof worldData.getSolarSystemByID === "function"
+      ? worldData.getSolarSystemByID(homeSystemID) || {}
+      : {};
+    const homeSecurity = Number(homeSystem.security);
+    if (Number.isFinite(homeSecurity) && homeSecurity < 0.45 &&
+        operation.autonomous === true && operation.territorialOperation !== true) {
+      const alternative = findNearestMiningStation(homeSystemID, 0.45, 15, [30000142]);
+      if (alternative) {
+        clearRouteTask(operation);
+        operation.homeStationID = alternative.stationID;
+        operation.relocatingMiningBase = true;
+        operation.stage = "to-home";
+        record(operation, `Mining base system ${homeSystemID} is low-sec (${homeSecurity.toFixed(2)}); moving to station ${alternative.stationID} in system ${alternative.systemID} over ${alternative.hops} high-security jump(s).`);
+        saveOperation(operation);
+        return { delayMs: STEP_DELAY_MS };
+      }
+    }
     const belt = pickBelt(operation);
     if (!belt) {
       const now = Date.now();
@@ -1066,7 +1093,20 @@ async function advanceMining(operation, bot) {
     if (!result.success) return result.capacityQueued
       ? { delayMs: TRAVEL_DELAY_MS, capacityQueued: true, capacityReason: result.message }
       : block(operation, "blocked", result.message);
+    const droneBay = require("../inventory/itemStore").listCharacterItems(bot.characterID, {
+      locationID: Number((getCharacterRecord(bot.characterID) || {}).shipID) || 0,
+      flagID: require("../inventory/itemStore").ITEM_FLAGS.DRONE_BAY,
+    });
+    if (!droneBay.length) {
+      stopOperation(bot.characterName);
+      return { delayMs: STEP_DELAY_MS };
+    }
     operation.beltID = Number(belt.itemID);
+    operation.recentBelts = {
+      ...Object.fromEntries(Object.entries(operation.recentBelts || {})
+        .filter(([, at]) => Date.now() - Number(at) < 4 * 60 * 60 * 1000)),
+      [String(belt.itemID)]: Date.now(),
+    };
     operation.tripStartedAt = Date.now();
     operation.stage = "to-belt";
     record(operation, `Undocked; trip ${operation.trips + 1} to asteroid belt ${operation.beltID}.`);
@@ -1610,13 +1650,13 @@ async function sellMiningOutput(operation, bot, stationID = operation.homeStatio
 // the pilot's own ISK. The previous hull stays in the hangar.
 const SHIP_LADDER = Object.freeze({
   mining: [
-    { name: "Venture", hullTypeID: 32880, moduleTypeIDs: [483, 483], minBalance: 600_000 },
+    { name: "Venture", hullTypeID: 32880, catalogFit: true, moduleTypeIDs: [483, 483], droneTypeIDs: ["Acolyte I"], minBalance: 600_000 },
     // Only pilots trained in Mining Barge climb to the Procurer.
     // catalogFit: the modules come from the killmail catalog (two strip miners
     // instead of the single hard-coded one), see applyCatalogFit.
-    { name: "Mining barge", hullTypeID: 17480, hullChoices: [17478, 17476, 17480], catalogFit: true, moduleTypeIDs: [17482], minBalance: 60_000_000, requiredSkills: [[17940, 1]] },
+    { name: "Mining barge", hullTypeID: 17480, hullChoices: [17478, 17476, 17480], catalogFit: true, moduleTypeIDs: [17482], droneTypeIDs: ["Acolyte I", "Acolyte I"], minBalance: 60_000_000, requiredSkills: [[17940, 1]] },
     // Tech II barge: Exhumers 1 implies Mining Barge 5 through its prerequisites.
-    { name: "Mackinaw", hullTypeID: 22548, catalogFit: true, moduleTypeIDs: [], minBalance: 250_000_000, requiredSkills: [[22551, 1]] },
+    { name: "Mackinaw", hullTypeID: 22548, catalogFit: true, moduleTypeIDs: [], droneTypeIDs: ["Acolyte I", "Acolyte I", "Acolyte I", "Acolyte I", "Acolyte I"], minBalance: 250_000_000, requiredSkills: [[22551, 1]] },
   ],
   security: [
     {
@@ -1685,6 +1725,35 @@ const SHIP_LADDER = Object.freeze({
     { name: "Tayra structure hauler", hullTypeID: 649, moduleTypeIDs: [1319, 1319, 1319, 1319], minBalance: 25_000_000 },
   ],
 });
+
+// The killmail catalog has no ore fit for the Venture (its 14 records are gas
+// hacks), so the starter hull flies a hand-written fit instead of a single
+// generic module. The T2 fit is used once the pilot can use its modules.
+const CURATED_MINING_FITS = Object.freeze({
+  32880: [
+    {
+      name: "T2 ore fit",
+      moduleTypeIDs: [482, 482, 28576, 5971, 2333, 8521],
+      droneTypeIDs: [2454],
+    },
+    {
+      name: "T1 ore fit",
+      moduleTypeIDs: [5239, 5239, 22542, 35656, 2281, 2281],
+      droneTypeIDs: [2454],
+    },
+  ],
+});
+
+function curatedMiningFit(bot, rung, hullTypeID) {
+  const options = CURATED_MINING_FITS[Number(hullTypeID)];
+  if (!options) return null;
+  for (const option of options) {
+    if (canUseRung(bot, { ...rung, moduleTypeIDs: option.moduleTypeIDs, droneTypeIDs: option.droneTypeIDs })) {
+      return option;
+    }
+  }
+  return null;
+}
 
 function resolveLadderTypeID(value) {
   const numeric = Number(value);
@@ -1830,13 +1899,26 @@ function applyCatalogFit(bot, rung) {
     ? currentHull
     : (rungHullForPilot(bot, rung) || rung.hullTypeID);
   const fit = require("./playerBotFitPlanner").oreFitForPilot(hullTypeID, bot && bot.characterID);
-  if (!fit || !fit.plan) return { ...rung, hullTypeID };
+  if (!fit || !fit.plan) {
+    const curated = curatedMiningFit(bot, rung, hullTypeID);
+    if (!curated) return { ...rung, hullTypeID };
+    return {
+      ...rung,
+      hullTypeID,
+      name: `${rung.name} (${curated.name})`,
+      moduleTypeIDs: [...curated.moduleTypeIDs],
+      droneTypeIDs: [...(curated.droneTypeIDs || [])],
+    };
+  }
+  // A killmail ore fit rarely carries drones, but a mining ship needs them to
+  // answer a belt rat; keep the ladder's defensive drones in that case.
+  const fitDrones = [...(fit.plan.droneTypeIDs || [])];
   return {
     ...rung,
     hullTypeID,
     name: `${rung.name} (${fit.name})`,
     moduleTypeIDs: [...(fit.plan.moduleTypeIDs || [])],
-    droneTypeIDs: [...(fit.plan.droneTypeIDs || [])],
+    droneTypeIDs: fitDrones.length ? fitDrones : [...(rung.droneTypeIDs || [])],
     catalogIndex: fit.catalogIndex,
   };
 }
@@ -5428,12 +5510,21 @@ function launchDefensiveDrones(bot, attackerEntityID) {
     if (!attached || !attached.session || !attached.entity) return false;
     const launch = require("./playerBotCombatRuntime")
       .launchDrones(bot, attached.session, attached.scene, attached.entity.itemID);
-    if (!launch || launch.success !== true) return false;
+    if (!launch || launch.success !== true) {
+      require("../../utils/logger").info(
+        `[PlayerBots] Defensive drones unavailable char=${bot.characterID} attacker=${id}: ` +
+          `${String((launch && launch.message) || "no-drones").slice(0, 120)}`,
+      );
+      return false;
+    }
     const droneIDs = (launch.drones || [])
       .map((drone) => normalizePositiveInteger(drone.itemID))
       .filter((value) => value > 0);
     if (!droneIDs.length) return false;
     require("../drone/droneRuntime").commandEngage(attached.session, droneIDs, id);
+    require("../../utils/logger").info(
+      `[PlayerBots] Defensive drones launched char=${bot.characterID} drones=${droneIDs.length} attacker=${id}`,
+    );
     return true;
   } catch (_) {
     return false;

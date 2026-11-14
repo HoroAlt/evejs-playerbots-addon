@@ -57,6 +57,9 @@ function harness({ inSpace = true, busy = false, launched = [{ itemID: 11 }, { i
       if (id.includes("droneRuntime")) {
         return { commandEngage: (session, ids, target) => calls.engage.push({ ids, target }) };
       }
+      if (id.includes("utils/logger")) {
+        return { info: () => {}, warn: () => {} };
+      }
       return {};
     },
   });
