@@ -1797,20 +1797,15 @@ const SHIP_LADDER = Object.freeze({
 });
 
 // The killmail catalog has no ore fit for the Venture (its 14 records are gas
-// hacks), so the starter hull flies a hand-written fit instead of a single
-// generic module. Both options must fit the hull's 240 CPU / 45 PG budget:
-// the first version carried an MWD and hardeners and was rejected by the
-// fitting service on every undock, which held pilots in a fitting loop.
+// hacks), so the starter hull flies a hand-written fit. It uses the Miner I the
+// fleet already has fitted: asking for a different laser tier made the fitter
+// stack the new laser on top of the old one, overrun 240 CPU and reject the
+// order every five minutes.
 const CURATED_MINING_FITS = Object.freeze({
   32880: [
     {
-      name: "T2 ore fit",
-      moduleTypeIDs: [482, 482, 28576, 2333],
-      droneTypeIDs: [2454],
-    },
-    {
-      name: "T1 ore fit",
-      moduleTypeIDs: [5239, 5239, 22542],
+      name: "Miner I ore fit",
+      moduleTypeIDs: [483, 483, 22542],
       droneTypeIDs: [2454],
     },
   ],
