@@ -52,6 +52,11 @@ test("the station with the whole package wins over a nearer partial one", () => 
   assert.equal(ctx.findUpgradeMarketStation({ characterID: 1 }, {}), 60015261);
 });
 
+test("the station that already holds the hull stays the destination", () => {
+  CANDIDATES[1].completeTypes = 2;
+  assert.equal(ctx.findUpgradeMarketStation({ characterID: 1 }, { sourceStationID: 60015261, spent: 0 }), 60015261);
+});
+
 test("with no complete station the non-Jita partial one is used", () => {
   CANDIDATES[1].completeTypes = 1;
   assert.equal(ctx.findUpgradeMarketStation({ characterID: 1 }, {}), 60008494);

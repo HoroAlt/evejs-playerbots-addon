@@ -2156,6 +2156,11 @@ function getUpgradePackageNeeds(rung) {
 function findUpgradeMarketStation(bot, rungOrOperation) {
   const needs = getUpgradePackageNeeds(rungOrOperation);
   if (!needs.length) return hubStationFor(bot);
+  // A failed purchase already told us which station holds the hull. Keep the
+  // trip there instead of letting the package planner send the pilot back to
+  // an empty regional hub, which looped for two hours on the live stand.
+  const knownSource = Number(rungOrOperation && rungOrOperation.sourceStationID) || 0;
+  if (knownSource > 0 && Number(rungOrOperation && rungOrOperation.spent) <= 0) return knownSource;
   const economy = require("./playerBotEconomyRuntime");
   const candidates = economy.findSellStationsForPackage(needs);
   if (!candidates.length) return hubStationFor(bot);
