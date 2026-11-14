@@ -58,6 +58,14 @@ function wake(characterID) {
 const NPC_ASSESSMENT_REUSE_MS = 3_000;
 const lastNpcAssessmentByCharacter = new Map();
 
+// A mining ship never trades fire with a belt rat: the first NPC hit stops the
+// lasers and sends it to the nearest station. An escort still engages below.
+function miningNpcRetreat(operation) {
+  if (!operation || operation.kind !== "mine") return null;
+  if (!["active", "holding", "review"].includes(String(operation.status || ""))) return null;
+  return { action: "retreat" };
+}
+
 async function handleIncomingThreat(payload, dependencies = {}) {
   const playerBots = dependencies.playerBots || require("./playerBotRuntime");
   const operationRuntime = dependencies.operationRuntime || require("./playerBotOperationRuntime");
@@ -122,19 +130,28 @@ async function handleIncomingThreat(payload, dependencies = {}) {
       } else {
         operationRuntime.requestThreatRetreat(bot.characterID, attackerEntityID, decision.reason);
       }
-    } else if (operation && operation.kind === "mine" && Number(operation.escortCharacterID) > 0) {
-      const escortID = Number(operation.escortCharacterID);
-      const escortBot = playerBots.getBotByCharacterID(escortID);
-      const escortOperation = operationRuntime.getOperation(escortID);
-      if (escortBot && escortOperation && escortOperation.kind === "combat" &&
-          ["active", "holding"].includes(escortOperation.status)) {
-        const decision = combatRuntime.assessDefensiveResponse(escortBot, attacker, payload.scene, escortOperation);
-        if (decision.action === "engage") {
-          operationRuntime.setDefensiveCombatTarget(escortID, attackerEntityID,
-            `protecting miner ${bot.characterName}`);
+    } else if (miningNpcRetreat(operation)) {
+      // Leave on the first NPC hit, before any damage is traded, whether or not
+      // an escort is available. An escort still engages, but the miner goes.
+      operationRuntime.setMiningIncomingThreat(bot.characterID, attackerEntityID, {
+        action: "retreat",
+        attackerName: String((attacker && (attacker.itemName || attacker.name)) || "").slice(0, 80),
+        receivedAtMs: Number(payload.whenMs) || Date.now(),
+      });
+      if (Number(operation.escortCharacterID) > 0) {
+        const escortID = Number(operation.escortCharacterID);
+        const escortBot = playerBots.getBotByCharacterID(escortID);
+        const escortOperation = operationRuntime.getOperation(escortID);
+        if (escortBot && escortOperation && escortOperation.kind === "combat" &&
+            ["active", "holding"].includes(escortOperation.status)) {
+          const decision = combatRuntime.assessDefensiveResponse(escortBot, attacker, payload.scene, escortOperation);
+          if (decision.action === "engage") {
+            operationRuntime.setDefensiveCombatTarget(escortID, attackerEntityID,
+              `protecting miner ${bot.characterName}`);
+          }
         }
+        wake(escortID);
       }
-      wake(escortID);
     }
     return { handled: true, action: "wake-pve-response", attackerEntityID };
   }
@@ -287,5 +304,5 @@ module.exports = {
   RESPONSE_COOLDOWN_MS,
   handleIncomingThreat,
   noteIncomingDamage,
-  _testing: { resolveAttacker, characterIDForEntity },
+  _testing: { resolveAttacker, characterIDForEntity, miningNpcRetreat },
 };
