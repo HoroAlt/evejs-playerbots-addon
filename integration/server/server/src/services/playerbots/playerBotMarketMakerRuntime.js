@@ -24,6 +24,12 @@ const WALLET_RESERVE_ISK = 20_000_000;
 // The seeded market only covers The Forge, so a bid parked in another region is
 // dead capital: the pilot keeps one region and cancels the rest.
 const THE_FORGE_REGION_ID = 10000002;
+const worldData = require("../../space/worldData");
+
+function stationInTradeRegion(stationID) {
+  const station = worldData.getStationByID(Number(stationID));
+  return Boolean(station) && Number(station.regionID) === THE_FORGE_REGION_ID;
+}
 
 function enabled(env = process.env) {
   return String(env.EVEJS_PLAYER_BOTS_MARKET_MAKING ?? "1").trim() !== "0";
@@ -80,7 +86,7 @@ async function runMarketMakerPass(bots, deps = defaultDeps()) {
       if (operation && ["active", "holding"].includes(operation.status) && operation.stage !== "done") continue;
       const session = deps.space().getActorSession(bot);
       const stationID = Number(session && (session.stationID || session.structureID)) || 0;
-      if (!stationID || economy.isJitaStation(stationID)) continue;
+      if (!stationID || economy.isJitaStation(stationID) || !stationInTradeRegion(stationID)) continue;
       summary.traders += 1;
       await listBoughtStock(bot, stationID, deps, summary);
       await keepBids(bot, stationID, deps, summary);
