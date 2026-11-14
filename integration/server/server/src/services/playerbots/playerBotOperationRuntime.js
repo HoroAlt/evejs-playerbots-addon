@@ -38,6 +38,14 @@ const LIST_UNDERCUT = 0.98;
 const BELT_DANGER_MS = 30 * 60 * 1000;
 const MINING_ESCORT_DISPATCH_RANGE_METERS = 250_000;
 const MINING_ESCORT_MAX_RESPONSE_WAIT_MS = 45_000;
+// High security only: a miner answers up to this many belt rats with drones and
+// keeps the lasers running. Above the limit, or in low/null, it still leaves.
+const MINING_HIGHSEC_TOLERATED_RATS = 3;
+const MINING_HIGHSEC_RAT_ENGAGE_COOLDOWN_MS = 30_000;
+// Worlds seeded with the Jita/New Caldari market keep every autonomous mining
+// base in The Forge. Revisit when the other empires' hubs are seeded.
+const THE_FORGE_REGION_ID = 10000002;
+const THE_FORGE_MINING_STATION_ID = 60000400; // Hirtamon VI - Moon 6
 const SELL_TO_BID_RATIO = 0.9;
 const ACTIVE_STATUSES = new Set(["active", "holding"]);
 const repo = createTableRepository("service:playerbots", { strict: true });
@@ -944,6 +952,38 @@ function shouldWithdrawMinerWithoutEscort(state) {
     Number(state && state.shield) <= 0.3;
 }
 
+// Security of the system the belt sits in, so tolerance follows the space the
+// pilot is actually mining in.
+function beltSecurityForMining(operation, state) {
+  const systemID = Number(state && state.systemID) || stationSystemID(operation.homeStationID);
+  const system = typeof worldData.getSolarSystemByID === "function"
+    ? worldData.getSolarSystemByID(systemID) || {}
+    : {};
+  return Number(system.security);
+}
+
+function stationRegionID(stationID) {
+  const station = typeof worldData.getStationByID === "function"
+    ? worldData.getStationByID(Number(stationID) || 0) || {}
+    : {};
+  return Number(station.regionID) || 0;
+}
+
+// A miner in high security answers a few rats with drones and never stops
+// mining. The ship still leaves when it starts taking fire.
+function engageToleratedBeltRats(bot, operation, ratCount) {
+  const nowMs = Date.now();
+  if (nowMs - (Number(operation.lastBeltRatEngageAtMs) || 0) < MINING_HIGHSEC_RAT_ENGAGE_COOLDOWN_MS) return false;
+  const targetID = typeof space.getNearestPirateNpcEntityID === "function"
+    ? space.getNearestPirateNpcEntityID(bot, MINING_ESCORT_DISPATCH_RANGE_METERS)
+    : 0;
+  if (!targetID || !launchDefensiveDrones(bot, targetID)) return false;
+  operation.lastBeltRatEngageAtMs = nowMs;
+  record(operation, `High-sec belt ${operation.beltID}: ${ratCount} pirate rat(s) visible; drones are engaging while mining continues.`);
+  saveOperation(operation);
+  return true;
+}
+
 async function advanceMining(operation, bot) {
   if (Number(operation.miningThreatPolicyVersion) !== 2) {
     // Previous builds marked whole belts dangerous from nearby NPC presence or
@@ -1047,6 +1087,19 @@ async function advanceMining(operation, bot) {
       ? worldData.getSolarSystemByID(homeSystemID) || {}
       : {};
     const homeSecurity = Number(homeSystem.security);
+    // The seeded market only covers The Forge, so autonomous miners work and
+    // sell there. shortcut: revisit when the other empires' hubs are seeded.
+    if (stationRegionID(operation.homeStationID) !== THE_FORGE_REGION_ID &&
+        operation.autonomous === true && operation.territorialOperation !== true) {
+      const previousHome = operation.homeStationID;
+      clearRouteTask(operation);
+      operation.homeStationID = THE_FORGE_MINING_STATION_ID;
+      operation.relocatingMiningBase = true;
+      operation.stage = "to-home";
+      record(operation, `Mining base ${previousHome} is outside The Forge; moving to station ${THE_FORGE_MINING_STATION_ID} where the market and belts are.`);
+      saveOperation(operation);
+      return { delayMs: STEP_DELAY_MS };
+    }
     if (Number.isFinite(homeSecurity) && homeSecurity < 0.45 &&
         operation.autonomous === true && operation.territorialOperation !== true) {
       const alternative = findNearestMiningStation(homeSystemID, 0.45, 15, [30000142]);
@@ -1176,12 +1229,6 @@ async function advanceMining(operation, bot) {
       }
       const coverage = escortRuntime.getEscortState(operation);
       if (!coverage.ready) {
-        if (operation.miningEscortWaiting !== true) {
-          space.stopMining(bot);
-          operation.miningEscortWaiting = true;
-          operation.miningEscortWaitStartedAtMs = Date.now();
-          record(operation, `Mining lasers paused: ${visiblePirateNpcCount} pirate rat(s) are visible and no fitted security escort is on the belt and engaging yet.`);
-        }
         if (shouldWithdrawMinerWithoutEscort(state)) {
           operation.dangerousBelts = { ...(operation.dangerousBelts || {}), [String(operation.beltID)]: Date.now() };
           operation.stage = "return";
@@ -1189,35 +1236,57 @@ async function advanceMining(operation, bot) {
           saveOperation(operation);
           return { delayMs: STEP_DELAY_MS };
         }
-        // A belt with visible rats and no fit-qualified escort is not a safe
-        // place to wait. Older behavior left miners idle on-grid until their
-        // shield had already collapsed; the live killboard showed repeated
-        // NPC losses in exactly that state. Leave immediately when no guard
-        // can cover this risk tier, and give an assigned guard only a short,
-        // bounded time to enter the grid and engage.
-        const noQualifiedEscort = !coverage.assigned && escort.assigned !== true;
-        const escortWaitStartedAtMs = Number(operation.miningEscortWaitStartedAtMs) || Date.now();
-        const escortResponseExpired = coverage.assigned === true &&
-          Date.now() - escortWaitStartedAtMs >= MINING_ESCORT_MAX_RESPONSE_WAIT_MS;
-        if (noQualifiedEscort || escortResponseExpired) {
-          operation.dangerousBelts = { ...(operation.dangerousBelts || {}), [String(operation.beltID)]: Date.now() };
-          operation.stage = "return";
-          operation.threatReturnStationID = findThreatEvacuationStation(bot);
-          record(operation, noQualifiedEscort
-            ? `No validated security fit can cover risk tier ${Number(escort.requiredTier || operation.escortRequiredTier) || "unknown"}; leaving belt ${operation.beltID} with ${visiblePirateNpcCount} visible pirate rat(s).`
-            : `Escort ${coverage.characterName || coverage.characterID || operation.escortCharacterName || "assigned"} did not engage within ${Math.round(MINING_ESCORT_MAX_RESPONSE_WAIT_MS / 1000)} seconds; leaving belt ${operation.beltID} with ${visiblePirateNpcCount} visible pirate rat(s).`);
-          saveOperation(operation);
-          return { delayMs: STEP_DELAY_MS };
+        // High security: a few rats are answered with drones instead of
+        // abandoning the ore. The ship still leaves as soon as it takes fire.
+        const beltSecurity = beltSecurityForMining(operation, state);
+        if (Number.isFinite(beltSecurity) && beltSecurity >= 0.45 &&
+            visiblePirateNpcCount <= MINING_HIGHSEC_TOLERATED_RATS) {
+          if (operation.miningEscortWaiting === true) {
+            operation.miningEscortWaiting = false;
+            operation.miningEscortWaitStartedAtMs = 0;
+            operation.miningEscortWaitLoggedAtMs = 0;
+            record(operation, `High-sec belt ${operation.beltID}: mining resumes while drones answer ${visiblePirateNpcCount} pirate rat(s).`);
+            saveOperation(operation);
+          }
+          engageToleratedBeltRats(bot, operation, visiblePirateNpcCount);
+          // No return here: the mining tick below keeps the lasers running.
+        } else {
+          if (operation.miningEscortWaiting !== true) {
+            space.stopMining(bot);
+            operation.miningEscortWaiting = true;
+            operation.miningEscortWaitStartedAtMs = Date.now();
+            record(operation, `Mining lasers paused: ${visiblePirateNpcCount} pirate rat(s) are visible and no fitted security escort is on the belt and engaging yet.`);
+          }
+          // A belt with visible rats and no fit-qualified escort is not a safe
+          // place to wait. Older behavior left miners idle on-grid until their
+          // shield had already collapsed; the live killboard showed repeated
+          // NPC losses in exactly that state. Leave immediately when no guard
+          // can cover this risk tier, and give an assigned guard only a short,
+          // bounded time to enter the grid and engage.
+          const noQualifiedEscort = !coverage.assigned && escort.assigned !== true;
+          const escortWaitStartedAtMs = Number(operation.miningEscortWaitStartedAtMs) || Date.now();
+          const escortResponseExpired = coverage.assigned === true &&
+            Date.now() - escortWaitStartedAtMs >= MINING_ESCORT_MAX_RESPONSE_WAIT_MS;
+          if (noQualifiedEscort || escortResponseExpired) {
+            operation.dangerousBelts = { ...(operation.dangerousBelts || {}), [String(operation.beltID)]: Date.now() };
+            operation.stage = "return";
+            operation.threatReturnStationID = findThreatEvacuationStation(bot);
+            record(operation, noQualifiedEscort
+              ? `No validated security fit can cover risk tier ${Number(escort.requiredTier || operation.escortRequiredTier) || "unknown"}; leaving belt ${operation.beltID} with ${visiblePirateNpcCount} visible pirate rat(s).`
+              : `Escort ${coverage.characterName || coverage.characterID || operation.escortCharacterName || "assigned"} did not engage within ${Math.round(MINING_ESCORT_MAX_RESPONSE_WAIT_MS / 1000)} seconds; leaving belt ${operation.beltID} with ${visiblePirateNpcCount} visible pirate rat(s).`);
+            saveOperation(operation);
+            return { delayMs: STEP_DELAY_MS };
+          }
+          const lastWaitLogAtMs = Number(operation.miningEscortWaitLoggedAtMs) || 0;
+          if (Date.now() - lastWaitLogAtMs >= 60_000) {
+            operation.miningEscortWaitLoggedAtMs = Date.now();
+            record(operation, coverage.assigned
+              ? `Waiting for escort ${coverage.characterName || coverage.characterID} to reach belt ${operation.beltID} and engage a rat.`
+              : `Waiting for a qualified security escort before resuming mining on belt ${operation.beltID}.`);
+            saveOperation(operation);
+          }
+          return { delayMs: MINING_POLL_MS };
         }
-        const lastWaitLogAtMs = Number(operation.miningEscortWaitLoggedAtMs) || 0;
-        if (Date.now() - lastWaitLogAtMs >= 60_000) {
-          operation.miningEscortWaitLoggedAtMs = Date.now();
-          record(operation, coverage.assigned
-            ? `Waiting for escort ${coverage.characterName || coverage.characterID} to reach belt ${operation.beltID} and engage a rat.`
-            : `Waiting for a qualified security escort before resuming mining on belt ${operation.beltID}.`);
-          saveOperation(operation);
-        }
-        return { delayMs: MINING_POLL_MS };
       }
       if (operation.miningEscortWaiting === true) {
         operation.miningEscortWaiting = false;

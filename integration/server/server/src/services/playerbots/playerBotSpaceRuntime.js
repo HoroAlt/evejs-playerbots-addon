@@ -1231,6 +1231,31 @@ function getNearbyPirateNpcCount(bot, radiusMeters) {
   return playerBotCombatPolicy.countNearbyPirateNpcs(visibleEntities, entity.position, radiusMeters);
 }
 
+// Nearest pirate the session can see, so a miner can answer belt rats with its
+// drones without leaving the belt.
+function getNearestPirateNpcEntityID(bot, radiusMeters) {
+  const radius = Number(radiusMeters);
+  if (!Number.isFinite(radius) || radius < 0) return 0;
+  const { scene, entity, session } = ensureActorInSpace(bot);
+  if (!entity || !entity.position) return 0;
+  const visibleEntities = scene && typeof scene.getVisibleEntitiesForSession === "function"
+    ? scene.getVisibleEntitiesForSession(session)
+    : [];
+  let best = null;
+  for (const candidate of visibleEntities || []) {
+    if (!playerBotCombatPolicy.isPirateNpc(candidate) || !candidate.position) continue;
+    const dx = Number(candidate.position.x) - Number(entity.position.x);
+    const dy = Number(candidate.position.y) - Number(entity.position.y);
+    const dz = Number(candidate.position.z) - Number(entity.position.z);
+    if (![dx, dy, dz].every(Number.isFinite)) continue;
+    const surfaceDistance = Math.max(0, Math.hypot(dx, dy, dz) - Math.max(0, Number(candidate.radius) || 0));
+    if (surfaceDistance > radius) continue;
+    const entityID = Number(candidate.itemID) || 0;
+    if (entityID > 0 && (!best || surfaceDistance < best.distance)) best = { entityID, distance: surfaceDistance };
+  }
+  return best ? best.entityID : 0;
+}
+
 let dogmaService = null;
 
 function getDogmaService() {
@@ -1636,6 +1661,7 @@ module.exports = {
   isBotConnectedForWork,
   getActorSpace,
   getNearbyPirateNpcCount,
+  getNearestPirateNpcEntityID,
   getActorSession,
   getSpaceState,
   lockTarget,

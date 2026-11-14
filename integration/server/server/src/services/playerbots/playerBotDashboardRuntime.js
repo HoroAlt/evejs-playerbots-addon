@@ -763,6 +763,7 @@ function createPlayerBotDashboardRuntime(options = {}) {
         stationID: positiveInteger(presence.stationID),
         structureID: positiveInteger(presence.structureID),
         shipTypeID: positiveInteger(character.shipTypeID),
+        shipTypeName: typeName(positiveInteger(character.shipTypeID)),
         operation: currentWork ? {
           operationID: String(currentWork.operationID || currentWork.cycleID || ""),
           kind: String(currentWork.kind || ""),
