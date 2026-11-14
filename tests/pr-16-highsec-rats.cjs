@@ -42,6 +42,7 @@ const ctx = {
   },
   stationSystemID: () => 30000133,
   space: { getNearestPirateNpcEntityID: () => nearest },
+  getSpace: () => ({ getNearestPirateNpcEntityID: () => nearest }),
   launchDefensiveDrones: (bot, id) => {
     calls.engaged.push(id);
     return true;
